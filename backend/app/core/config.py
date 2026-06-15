@@ -1,0 +1,32 @@
+from functools import lru_cache
+from pathlib import Path
+
+from pydantic import Field
+from pydantic_settings import BaseSettings, SettingsConfigDict
+
+
+ROOT_DIR = Path(__file__).resolve().parents[3]
+
+
+class Settings(BaseSettings):
+    app_name: str = "Swindle"
+    api_v1_prefix: str = "/api/v1"
+    frontend_origin: str = Field(default="http://localhost:5173", alias="FRONTEND_ORIGIN")
+    lichess_client_id: str = Field(default="swindle-local", alias="LICHESS_CLIENT_ID")
+    lichess_redirect_uri: str = Field(
+        default="http://localhost:8000/api/v1/integrations/lichess/callback",
+        alias="LICHESS_REDIRECT_URI",
+    )
+    lichess_scopes: str = Field(default="", alias="LICHESS_SCOPES")
+    lichess_oauth_authorize_url: str = Field(default="https://lichess.org/oauth", alias="LICHESS_OAUTH_AUTHORIZE_URL")
+    lichess_oauth_token_url: str = Field(default="https://lichess.org/api/token", alias="LICHESS_OAUTH_TOKEN_URL")
+    lichess_api_base_url: str = Field(default="https://lichess.org", alias="LICHESS_API_BASE_URL")
+    token_encryption_key: str = Field(default="dev-only-token-key", alias="TOKEN_ENCRYPTION_KEY")
+    database_url: str = Field(default="postgresql+psycopg://swindle:swindle@localhost:5432/swindle", alias="DATABASE_URL")
+
+    model_config = SettingsConfigDict(env_file=(ROOT_DIR / ".env", ROOT_DIR / "backend" / ".env"), extra="ignore")
+
+
+@lru_cache
+def get_settings() -> Settings:
+    return Settings()
