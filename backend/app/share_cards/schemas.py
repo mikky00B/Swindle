@@ -28,8 +28,12 @@ class ShareCardGame(BaseModel):
 
 class ShareCardMetrics(BaseModel):
     lowest_eval: float | None = None
+    highest_eval: float | None = None
     biggest_eval_swing: float | None = None
     accuracy: float | None = None
+    analysis_source: str | None = None
+    analysis_status: str | None = None
+    eval_points: int = 0
 
 
 class ShareCardData(BaseModel):
@@ -68,15 +72,21 @@ def build_share_card_data(
         story=story,
         metrics=ShareCardMetrics(
             lowest_eval=metrics.lowest_eval,
+            highest_eval=metrics.highest_eval,
             biggest_eval_swing=metrics.biggest_eval_swing,
             accuracy=metrics.accuracy,
+            analysis_source=metrics.analysis_source,
+            analysis_status=metrics.analysis_status,
+            eval_points=len(metrics.eval_curve or []),
         ),
         board_position_source=source,
     )
 
 
 def resolve_board_position(story: GameStory, game: ParsedGame) -> tuple[str, str]:
-    if story.key_move_number is not None and _is_valid_fen(story.key_position_fen):
+    if _is_valid_fen(story.key_position_fen) and (
+        story.key_move_number is not None or story.key_position_fen != game.final_fen
+    ):
         return str(story.key_position_fen), "key_position"
     if _is_valid_fen(game.final_fen):
         return str(game.final_fen), "final_position"

@@ -68,7 +68,7 @@ async def complete_callback(code: str, state: str) -> dict[str, Any]:
 
 async def exchange_code_for_token(code: str, code_verifier: str) -> dict[str, Any]:
     settings = get_settings()
-    async with httpx.AsyncClient(timeout=15) as client:
+    async with httpx.AsyncClient(timeout=15, trust_env=False) as client:
         response = await client.post(
             settings.lichess_oauth_token_url,
             data={
@@ -86,7 +86,7 @@ async def exchange_code_for_token(code: str, code_verifier: str) -> dict[str, An
 
 async def fetch_account(access_token: str) -> dict[str, Any]:
     settings = get_settings()
-    async with httpx.AsyncClient(timeout=15) as client:
+    async with httpx.AsyncClient(timeout=15, trust_env=False) as client:
         response = await client.get(
             lichess_api_url("/account"),
             headers={"Authorization": f"Bearer {access_token}", "Accept": "application/json"},

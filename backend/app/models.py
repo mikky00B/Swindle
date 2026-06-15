@@ -118,6 +118,10 @@ class GameMetric(Base):
     highest_eval: Mapped[float | None] = mapped_column(Float, nullable=True)
     biggest_eval_swing: Mapped[float | None] = mapped_column(Float, nullable=True)
     turning_point_move: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    turning_point_fen: Mapped[str | None] = mapped_column(Text, nullable=True)
+    turning_point_san: Mapped[str | None] = mapped_column(String(32), nullable=True)
+    lowest_eval_fen: Mapped[str | None] = mapped_column(Text, nullable=True)
+    highest_eval_fen: Mapped[str | None] = mapped_column(Text, nullable=True)
     blunders_count: Mapped[int | None] = mapped_column(Integer, nullable=True)
     mistakes_count: Mapped[int | None] = mapped_column(Integer, nullable=True)
     inaccuracies_count: Mapped[int | None] = mapped_column(Integer, nullable=True)
@@ -128,6 +132,7 @@ class GameMetric(Base):
     eval_curve: Mapped[list | None] = mapped_column(JSON, nullable=True)
     analysis_depth: Mapped[int | None] = mapped_column(Integer, nullable=True)
     analysis_source: Mapped[str] = mapped_column(String(32), default="metadata_only")
+    analysis_status: Mapped[str] = mapped_column(String(32), default="unavailable")
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, onupdate=utcnow)
 
@@ -177,3 +182,36 @@ class SuggestedPost(Base):
     status: Mapped[str] = mapped_column(String(32), default="suggested")
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, onupdate=utcnow)
+
+
+class EvalCache(Base):
+    __tablename__ = "eval_cache"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=uuid_str)
+    fen_key: Mapped[str] = mapped_column(String(64), unique=True, index=True)
+    raw_fen: Mapped[str] = mapped_column(Text)
+    eval_cp: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    mate: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    depth: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    source: Mapped[str] = mapped_column(String(32), default="lichess_cloud_eval")
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+
+
+class PublishedPost(Base):
+    __tablename__ = "published_posts"
+    __table_args__ = (
+        UniqueConstraint("user_id", "game_story_id", name="uq_published_posts_user_story"),
+    )
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=uuid_str)
+    user_id: Mapped[str] = mapped_column(String(36), ForeignKey("users.id", ondelete="CASCADE"), index=True)
+    game_id: Mapped[str] = mapped_column(String(36), ForeignKey("games.id", ondelete="CASCADE"), index=True)
+    game_story_id: Mapped[str] = mapped_column(String(36), ForeignKey("game_stories.id", ondelete="CASCADE"), index=True)
+    headline: Mapped[str] = mapped_column(Text)
+    caption: Mapped[str | None] = mapped_column(Text, nullable=True)
+    visibility: Mapped[str] = mapped_column(String(32), default="public", index=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, onupdate=utcnow)
+
+    game: Mapped[Game] = relationship()
+    game_story: Mapped[GameStory] = relationship()

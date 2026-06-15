@@ -10,6 +10,7 @@ ROOT_DIR = Path(__file__).resolve().parents[3]
 
 class Settings(BaseSettings):
     app_name: str = "Swindle"
+    app_env: str = Field(default="development", alias="APP_ENV")
     api_v1_prefix: str = "/api/v1"
     frontend_origin: str = Field(default="http://localhost:5173", alias="FRONTEND_ORIGIN")
     lichess_client_id: str = Field(default="swindle-local", alias="LICHESS_CLIENT_ID")

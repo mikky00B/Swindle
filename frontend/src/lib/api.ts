@@ -1,4 +1,12 @@
-import type { GameDebug, ImportResponse, JournalGame, LichessStatus, ShareCardData } from "../types";
+import type {
+  GameDebug,
+  ImportResponse,
+  JournalGame,
+  LichessStatus,
+  PublicProfile,
+  PublishedPost,
+  ShareCardData,
+} from "../types";
 
 const API_BASE = import.meta.env.VITE_API_BASE ?? "http://localhost:8000/api/v1";
 
@@ -111,6 +119,32 @@ export async function resetIgnoredSuggestions(): Promise<{ restored: number }> {
   return readJson(response, "Could not reset ignored suggestions");
 }
 
+export async function publishStoryCard(storyId: string): Promise<PublishedPost> {
+  const response = await fetch(`${API_BASE}/stories/${storyId}/publish`, {
+    method: "POST",
+    headers: makeHeaders(),
+  });
+  return readJson(response, "Could not publish card");
+}
+
+export async function unpublishStoryPost(postId: string): Promise<{ id: string; visibility: string; unpublished: boolean }> {
+  const response = await fetch(`${API_BASE}/posts/${postId}/unpublish`, {
+    method: "POST",
+    headers: makeHeaders(),
+  });
+  return readJson(response, "Could not unpublish card");
+}
+
+export async function getPublicProfile(username: string): Promise<PublicProfile> {
+  const response = await fetch(`${API_BASE}/profiles/${encodeURIComponent(username)}`);
+  return readJson(response, "Could not load public profile");
+}
+
+export async function getPublicPost(postId: string): Promise<PublishedPost> {
+  const response = await fetch(`${API_BASE}/posts/${encodeURIComponent(postId)}`);
+  return readJson(response, "Could not load public post");
+}
+
 export async function getImportedGameShareCard(gameId: string): Promise<ShareCardData> {
   const response = await fetch(`${API_BASE}/games/${gameId}/share-card`, {
     headers: makeHeaders(),
@@ -131,6 +165,14 @@ export async function reprocessJournalGame(gameId: string): Promise<JournalGame>
     headers: makeHeaders(),
   });
   return readJson(response, "Could not reprocess game");
+}
+
+export async function analyzeJournalGame(gameId: string): Promise<JournalGame> {
+  const response = await fetch(`${API_BASE}/games/${gameId}/analyze`, {
+    method: "POST",
+    headers: makeHeaders(),
+  });
+  return readJson(response, "Could not analyze game");
 }
 
 export async function reprocessAllJournalGames(): Promise<{ processed: number }> {

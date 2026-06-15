@@ -1,7 +1,10 @@
 from fastapi import APIRouter, HTTPException, Query, Request
 
+from app.core.config import get_settings
+from app.games.schemas import DebugEvalRequest
 from app.games.lichess_import import import_latest_lichess_games
 from app.games.repository import (
+    debug_eval_game,
     get_game_debug,
     get_imported_game_detail,
     get_share_card,
@@ -70,9 +73,34 @@ async def imported_game_debug(game_id: str, request: Request) -> dict:
 
 
 @router.post("/{game_id}/process")
-async def process_imported_game(game_id: str, request: Request) -> dict:
+async def process_imported_game(game_id: str, request: Request, with_eval: bool = Query(default=False)) -> dict:
     user_id = _get_user_id(request)
-    game = reprocess_game(game_id, user_id)
+    game = reprocess_game(game_id, user_id, with_eval=with_eval)
+    if game is None:
+        raise HTTPException(status_code=404, detail="Imported game not found")
+    return game
+
+
+@router.post("/{game_id}/analyze")
+async def analyze_imported_game(game_id: str, request: Request) -> dict:
+    user_id = _get_user_id(request)
+    game = reprocess_game(game_id, user_id, with_eval=True)
+    if game is None:
+        raise HTTPException(status_code=404, detail="Imported game not found")
+    return game
+
+
+@router.post("/{game_id}/debug-eval")
+async def debug_eval_imported_game(game_id: str, payload: DebugEvalRequest, request: Request) -> dict:
+    if get_settings().app_env == "production":
+        raise HTTPException(status_code=404, detail="Not found")
+    user_id = _get_user_id(request)
+    game = debug_eval_game(
+        game_id,
+        user_id,
+        [point.model_dump(mode="json") for point in payload.eval_curve],
+        payload.analysis_status,
+    )
     if game is None:
         raise HTTPException(status_code=404, detail="Imported game not found")
     return game
