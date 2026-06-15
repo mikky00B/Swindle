@@ -7,10 +7,11 @@ from sqlalchemy import select
 from sqlalchemy.orm import joinedload
 
 from app.core.database import get_session
+from app.games.analysis import analyze_game_with_cloud_eval, metrics_from_mock_user_evals
 from app.games.pgn_parser import compute_final_fen_from_moves, compute_final_fen_from_pgn
 from app.games.schemas import GameMetrics, ParsedGame
 from app.integrations.lichess.service import ensure_local_user
-from app.models import Game, GameMetric, GameStory, SuggestedPost
+from app.models import Game, GameMetric, GameStory, PublishedPost, SuggestedPost
 from app.share_cards.schemas import ShareCardData, build_share_card_data
 from app.story.processor import generate_story
 from app.story.schemas import GameStory as StorySchema
@@ -82,7 +83,7 @@ def list_imported_games(user_id: str) -> list[dict[str, Any]]:
         games = (
             session.scalars(
                 select(Game)
-                .options(joinedload(Game.story))
+                .options(joinedload(Game.story), joinedload(Game.metrics))
                 .where(Game.user_id == user_id)
                 .order_by(Game.played_at.desc().nullslast(), Game.imported_at.desc())
             )
@@ -95,11 +96,11 @@ def list_imported_games(user_id: str) -> list[dict[str, Any]]:
 def get_imported_game_detail(game_id: str, user_id: str) -> dict[str, Any] | None:
     with get_session() as session:
         game = session.scalar(
-            select(Game).options(joinedload(Game.story)).where(Game.id == game_id, Game.user_id == user_id)
+            select(Game).options(joinedload(Game.story), joinedload(Game.metrics)).where(Game.id == game_id, Game.user_id == user_id)
         )
         if game is None:
             return None
-        return _game_to_detail_dict(game)
+        return _game_to_detail_dict(game, session=session)
 
 
 def get_game_debug(game_id: str, user_id: str) -> dict[str, Any] | None:
@@ -129,6 +130,7 @@ def get_game_debug(game_id: str, user_id: str) -> dict[str, Any] | None:
             "story_type": game.story.primary_story if game.story else None,
             "headline": game.story.headline if game.story else None,
             "subheadline": game.story.subheadline if game.story else None,
+            "metrics": _metrics_to_dict(game.metrics),
             "raw_payload": game.raw_payload,
         }
 
@@ -156,7 +158,7 @@ def _card_for_game(session, game: Game | None) -> dict[str, Any] | None:
     return game.story.share_card_data
 
 
-def reprocess_game(game_id: str, user_id: str) -> dict[str, Any] | None:
+def reprocess_game(game_id: str, user_id: str, *, with_eval: bool = False) -> dict[str, Any] | None:
     with get_session() as session:
         game = session.scalar(
             select(Game).options(joinedload(Game.story), joinedload(Game.metrics)).where(Game.id == game_id, Game.user_id == user_id)
@@ -166,9 +168,15 @@ def reprocess_game(game_id: str, user_id: str) -> dict[str, Any] | None:
 
         _ensure_final_fen(game)
         parsed = _parsed_from_game(game)
-        metrics = _metrics_from_model(game.metrics)
+        metrics = analyze_game_with_cloud_eval(parsed, session) if with_eval else _metrics_from_model(game.metrics)
         story = generate_story(parsed, metrics)
         share_card = build_share_card_data(parsed, story, metrics, _player_username(game))
+
+        if with_eval:
+            if game.metrics is None:
+                game.metrics = GameMetric(game_id=game.id)
+                session.flush()
+            _update_metric_model(game.metrics, metrics)
 
         if game.story is None:
             game.story = _story_model(game.id, user_id, share_card.story, share_card)
@@ -178,8 +186,40 @@ def reprocess_game(game_id: str, user_id: str) -> dict[str, Any] | None:
         game.processing_status = "processed"
         game.updated_at = datetime.now(timezone.utc)
         _sync_suggestion_for_story(session, game.story)
+        _sync_published_post_for_story(session, game.story)
         session.flush()
-        return _game_to_detail_dict(game)
+        return _game_to_detail_dict(game, session=session)
+
+
+def debug_eval_game(game_id: str, user_id: str, eval_curve: list[Any], analysis_status: str = "complete") -> dict[str, Any] | None:
+    with get_session() as session:
+        game = session.scalar(
+            select(Game).options(joinedload(Game.story), joinedload(Game.metrics)).where(Game.id == game_id, Game.user_id == user_id)
+        )
+        if game is None:
+            return None
+        _ensure_final_fen(game)
+        parsed = _parsed_from_game(game)
+        metrics = metrics_from_mock_user_evals(parsed, eval_curve, analysis_status)
+        story = generate_story(parsed, metrics)
+        share_card = build_share_card_data(parsed, story, metrics, _player_username(game))
+
+        if game.metrics is None:
+            game.metrics = GameMetric(game_id=game.id)
+            session.flush()
+        _update_metric_model(game.metrics, metrics)
+
+        if game.story is None:
+            game.story = _story_model(game.id, user_id, share_card.story, share_card)
+            session.flush()
+        else:
+            _update_story_model(game.story, share_card.story, share_card)
+        game.processing_status = "processed"
+        game.updated_at = datetime.now(timezone.utc)
+        _sync_suggestion_for_story(session, game.story)
+        _sync_published_post_for_story(session, game.story)
+        session.flush()
+        return _game_to_detail_dict(game, session=session)
 
 
 def reprocess_all_games(user_id: str) -> dict[str, int]:
@@ -209,7 +249,7 @@ def list_suggested_stories(user_id: str) -> list[dict[str, Any]]:
         for suggestion in suggestions:
             game = session.scalar(
                 select(Game)
-                .options(joinedload(Game.story))
+                .options(joinedload(Game.story), joinedload(Game.metrics))
                 .where(Game.id == suggestion.game_id, Game.user_id == user_id)
             )
             if game is None or game.story is None:
@@ -307,12 +347,22 @@ def _game_to_journal_dict(game: Game) -> dict[str, Any]:
         "imported_at": _iso(game.imported_at),
         "processing_status": game.processing_status,
         "story": _story_to_dict(game.story),
+        "metrics": _metrics_to_dict(game.metrics),
     }
 
 
-def _game_to_detail_dict(game: Game) -> dict[str, Any]:
+def _game_to_detail_dict(game: Game, *, session=None) -> dict[str, Any]:
     item = _game_to_journal_dict(game)
     item["raw_payload"] = game.raw_payload
+    if session is not None and game.story is not None:
+        post = session.scalar(
+            select(PublishedPost).where(
+                PublishedPost.user_id == game.user_id,
+                PublishedPost.game_story_id == game.story.id,
+                PublishedPost.visibility == "public",
+            )
+        )
+        item["published_post"] = _published_post_summary(post)
     return item
 
 
@@ -341,6 +391,24 @@ def _story_to_dict(story: GameStory | None) -> dict[str, Any] | None:
     }
 
 
+def _metrics_to_dict(metric: GameMetric | None) -> dict[str, Any]:
+    if metric is None:
+        return {"analysis_source": "metadata_only", "analysis_status": "none", "eval_points": 0}
+    return {
+        "accuracy": metric.accuracy,
+        "lowest_eval": metric.lowest_eval,
+        "highest_eval": metric.highest_eval,
+        "biggest_eval_swing": metric.biggest_eval_swing,
+        "turning_point_move": metric.turning_point_move,
+        "turning_point_fen": metric.turning_point_fen,
+        "turning_point_san": metric.turning_point_san,
+        "analysis_depth": metric.analysis_depth,
+        "analysis_source": metric.analysis_source,
+        "analysis_status": metric.analysis_status,
+        "eval_points": len(metric.eval_curve or []),
+    }
+
+
 SUGGESTED_STORY_TYPES = {
     "giant_slayer",
     "miniature",
@@ -348,6 +416,7 @@ SUGGESTED_STORY_TYPES = {
     "rating_milestone",
     "swindle",
     "heartbreaker",
+    "turning_point",
 }
 
 
@@ -372,6 +441,38 @@ def _sync_suggestion_for_story(session, story: GameStory | None) -> None:
         return
     if suggestion is None:
         session.add(SuggestedPost(user_id=story.user_id, game_id=story.game_id, game_story_id=story.id))
+
+
+def _sync_published_post_for_story(session, story: GameStory | None) -> None:
+    if story is None:
+        return
+    post = session.scalar(
+        select(PublishedPost).where(
+            PublishedPost.user_id == story.user_id,
+            PublishedPost.game_story_id == story.id,
+            PublishedPost.visibility == "public",
+        )
+    )
+    if post is None:
+        return
+    post.headline = story.headline
+    post.caption = story.caption
+    post.updated_at = datetime.now(timezone.utc)
+
+
+def _published_post_summary(post: PublishedPost | None) -> dict[str, Any] | None:
+    if post is None:
+        return None
+    return {
+        "id": post.id,
+        "game_id": post.game_id,
+        "game_story_id": post.game_story_id,
+        "headline": post.headline,
+        "caption": post.caption,
+        "visibility": post.visibility,
+        "created_at": _iso(post.created_at),
+        "updated_at": _iso(post.updated_at),
+    }
 
 
 def _ensure_missing_suggestions(session, user_id: str) -> None:
@@ -416,6 +517,10 @@ def _metrics_from_model(metric: GameMetric | None) -> GameMetrics | None:
         highest_eval=metric.highest_eval,
         biggest_eval_swing=metric.biggest_eval_swing,
         turning_point_move=metric.turning_point_move,
+        turning_point_fen=metric.turning_point_fen,
+        turning_point_san=metric.turning_point_san,
+        lowest_eval_fen=metric.lowest_eval_fen,
+        highest_eval_fen=metric.highest_eval_fen,
         blunders_count=metric.blunders_count,
         mistakes_count=metric.mistakes_count,
         inaccuracies_count=metric.inaccuracies_count,
@@ -426,7 +531,25 @@ def _metrics_from_model(metric: GameMetric | None) -> GameMetrics | None:
         eval_curve=metric.eval_curve,
         analysis_depth=metric.analysis_depth,
         analysis_source=metric.analysis_source,
+        analysis_status=metric.analysis_status,
     )
+
+
+def _update_metric_model(model: GameMetric, metrics: GameMetrics) -> None:
+    model.accuracy = metrics.accuracy
+    model.lowest_eval = metrics.lowest_eval
+    model.highest_eval = metrics.highest_eval
+    model.biggest_eval_swing = metrics.biggest_eval_swing
+    model.turning_point_move = metrics.turning_point_move
+    model.turning_point_fen = metrics.turning_point_fen
+    model.turning_point_san = metrics.turning_point_san
+    model.lowest_eval_fen = metrics.lowest_eval_fen
+    model.highest_eval_fen = metrics.highest_eval_fen
+    model.eval_curve = metrics.eval_curve
+    model.analysis_depth = metrics.analysis_depth
+    model.analysis_source = metrics.analysis_source
+    model.analysis_status = metrics.analysis_status
+    model.updated_at = datetime.now(timezone.utc)
 
 
 def _player_username(game: Game) -> str:
@@ -444,6 +567,9 @@ def _share_card_needs_rebuild(data: dict[str, Any], model: Game) -> bool:
         return True
     game = data.get("game")
     if not isinstance(game, dict) or "user_color" not in game or "final_fen" not in game:
+        return True
+    metrics = data.get("metrics")
+    if not isinstance(metrics, dict) or "eval_points" not in metrics or "analysis_status" not in metrics:
         return True
     if game.get("final_fen") != model.final_fen:
         return True

@@ -378,7 +378,7 @@ function signature(fen: string, orientation: "white" | "black"): string[] {
   assert.equal(shareCardSource.includes("getBoardOrientation"), false);
   assert.equal(shareCardSource.includes('orientation === "black"'), false);
   assert.equal(shareCardSource.includes("<ChessBoard"), true);
-  assert.equal((appSource.match(/<ShareCard\s/g) ?? []).length, 2);
+  assert.ok((appSource.match(/<ShareCard\s/g) ?? []).length >= 2);
 }
 
 console.log("chess orientation tests passed");

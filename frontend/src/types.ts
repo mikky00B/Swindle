@@ -41,8 +41,12 @@ export type ShareCardData = {
   story: GameStory;
   metrics: {
     lowest_eval?: number | null;
+    highest_eval?: number | null;
     biggest_eval_swing?: number | null;
     accuracy?: number | null;
+    analysis_status?: string | null;
+    analysis_source?: string | null;
+    eval_points?: number | null;
   };
   board_position_source: "key_position" | "final_position" | "fallback_starting_position";
 };
@@ -86,9 +90,25 @@ export type JournalGame = {
   imported_at: string;
   processing_status: string;
   story: GameStory;
+  metrics?: GameAnalysisMetrics;
   raw_payload?: Record<string, unknown>;
   suggestion_id?: string;
   suggestion_status?: "suggested" | "ignored";
+  published_post?: PublishedPostSummary | null;
+};
+
+export type GameAnalysisMetrics = {
+  accuracy?: number | null;
+  lowest_eval?: number | null;
+  highest_eval?: number | null;
+  biggest_eval_swing?: number | null;
+  turning_point_move?: number | null;
+  turning_point_fen?: string | null;
+  turning_point_san?: string | null;
+  analysis_depth?: number | null;
+  analysis_source?: string | null;
+  analysis_status?: string | null;
+  eval_points: number;
 };
 
 export type GameDebug = {
@@ -109,4 +129,56 @@ export type GameDebug = {
   story_type?: string | null;
   headline?: string | null;
   subheadline?: string | null;
+  metrics?: GameAnalysisMetrics;
+};
+
+export type PublishedPostSummary = {
+  id: string;
+  game_id: string;
+  game_story_id: string;
+  headline: string;
+  caption?: string | null;
+  visibility: "public" | "unpublished";
+  created_at?: string | null;
+  updated_at?: string | null;
+};
+
+export type PublishedPost = PublishedPostSummary & {
+  display_name: string;
+  profile_slug: string;
+  lichess_username?: string | null;
+  game?: {
+    id: string;
+    external_game_id: string;
+    platform: string;
+    result: string;
+    opening_name?: string | null;
+    opponent_username?: string | null;
+    moves_count: number;
+    speed?: string | null;
+    time_control?: string | null;
+    played_at?: string | null;
+  } | null;
+  story?: {
+    id: string;
+    primary_story: string;
+    badge_label: string;
+    badge_emoji: string;
+    headline: string;
+    interesting_score: number;
+    key_position_fen?: string | null;
+  } | null;
+  share_card?: ShareCardData;
+};
+
+export type PublicProfile = {
+  display_name: string;
+  profile_slug: string;
+  lichess_username?: string | null;
+  published_cards_count: number;
+  wins_shown: number;
+  losses_shown: number;
+  common_story?: string | null;
+  games_imported?: number;
+  posts: PublishedPost[];
 };

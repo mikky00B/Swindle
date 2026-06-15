@@ -71,7 +71,7 @@ async def fetch_latest_games(account: dict[str, Any], limit: int) -> list[dict[s
         "evals": "false",
         "sort": "dateDesc",
     }
-    async with httpx.AsyncClient(timeout=30) as client:
+    async with httpx.AsyncClient(timeout=30, trust_env=False) as client:
         try:
             response = await client.get(
                 lichess_api_url(f"/games/user/{username}"),

@@ -20,8 +20,9 @@ def generate_story(game: ParsedGame, metrics: GameMetrics | None = None) -> Game
         badge_emoji=badge_emoji,
         headline=headline,
         subheadline=_subheadline(game, metrics),
-        key_move_number=(metrics.turning_point_move if metrics else None),
-        key_position_fen=game.final_fen,
+        key_move_number=_key_move_number(primary.story_type, metrics),
+        key_position_fen=_key_position_fen(primary.story_type, game, metrics),
+        key_move_san=_key_move_san(primary.story_type, metrics),
         template_key=template_key,
         interesting_score=interesting_score,
         confidence_score=round(primary.confidence, 2),
@@ -62,8 +63,30 @@ def _subheadline(game: ParsedGame, metrics: GameMetrics | None) -> str | None:
     parts: list[str] = []
     if game.opening_name:
         parts.append(game.opening_name)
-    if metrics and metrics.turning_point_move:
+    if metrics and metrics.turning_point_move and metrics.biggest_eval_swing is not None and metrics.biggest_eval_swing >= 2.5:
         parts.append(f"The game flipped around move {metrics.turning_point_move}.")
     if game.opponent_username:
         parts.append(f"Against {game.opponent_username}.")
     return " ".join(parts) or None
+
+
+def _key_position_fen(story_type: str, game: ParsedGame, metrics: GameMetrics | None) -> str | None:
+    if metrics is None:
+        return game.final_fen
+    if story_type == "swindle":
+        return metrics.lowest_eval_fen or metrics.turning_point_fen or game.final_fen
+    if story_type in {"heartbreaker", "turning_point"}:
+        return metrics.turning_point_fen or game.final_fen
+    return game.final_fen
+
+
+def _key_move_number(story_type: str, metrics: GameMetrics | None) -> int | None:
+    if metrics is None or story_type not in {"swindle", "heartbreaker", "turning_point"}:
+        return None
+    return metrics.turning_point_move
+
+
+def _key_move_san(story_type: str, metrics: GameMetrics | None) -> str | None:
+    if metrics is None or story_type not in {"swindle", "heartbreaker", "turning_point"}:
+        return None
+    return metrics.turning_point_san

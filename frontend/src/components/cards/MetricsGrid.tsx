@@ -1,18 +1,18 @@
 import type { ShareCardData } from "../../types";
-import { getMetricRows } from "../../lib/cardMetrics";
+import { analysisNotice, getMetricRows, hasUsableEngineMetrics } from "../../lib/cardMetrics";
 
 type MetricsGridProps = {
   card: ShareCardData;
 };
 
 export function MetricsGrid({ card }: MetricsGridProps) {
-  const hasEngineMetrics =
-    card.metrics.lowest_eval != null || card.metrics.biggest_eval_swing != null || card.metrics.accuracy != null;
+  const hasEngineMetrics = hasUsableEngineMetrics(card);
   const metrics = getMetricRows(card);
+  const notice = analysisNotice(card);
 
   return (
     <>
-      {!hasEngineMetrics ? <div className="engine-note">Engine analysis not available yet</div> : null}
+      {notice ? <div className={hasEngineMetrics ? "engine-note is-ready" : "engine-note"}>{notice}</div> : null}
       <div className="metrics-grid">
         {metrics.map(([label, value]) => (
           <div className="metric" key={label}>

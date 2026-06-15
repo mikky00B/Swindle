@@ -7,6 +7,7 @@ BASE_SCORES = {
     "swindle": 0.40,
     "heartbreaker": 0.35,
     "giant_slayer": 0.75,
+    "turning_point": 0.30,
     "clean_game": 0.25,
     "miniature": 0.75,
     "long_grind": 0.70,

@@ -10,6 +10,7 @@ STORY_PRIORITY = {
     "swindle": 100,
     "heartbreaker": 95,
     "giant_slayer": 90,
+    "turning_point": 85,
     "clean_game": 80,
     "miniature": 70,
     "long_grind": 60,
@@ -42,6 +43,10 @@ def detect_story_candidates(game: ParsedGame, metrics: GameMetrics | None) -> li
     if game.result == "loss" and metrics.highest_eval is not None and metrics.highest_eval >= 3:
         confidence = 0.92 if metrics.highest_eval >= 5 and metrics.eval_curve else 0.70
         candidates.append(StoryCandidate("heartbreaker", confidence, ("highest_eval_above_plus_3", "lost_game")))
+
+    if metrics.biggest_eval_swing is not None and metrics.biggest_eval_swing >= 2.5 and metrics.eval_curve:
+        confidence = 0.9 if metrics.biggest_eval_swing >= 4 else 0.75
+        candidates.append(StoryCandidate("turning_point", confidence, ("big_eval_swing",)))
 
     if (
         game.result == "win"

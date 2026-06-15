@@ -7,9 +7,10 @@ import httpx
 from fastapi.testclient import TestClient
 from sqlalchemy import select
 
+from app.games import analysis
 from app.core.database import get_session
 from app.main import app
-from app.models import Game, GameStory, OAuthState, SuggestedPost, User
+from app.models import Game, GameStory, OAuthState, PublishedPost, SuggestedPost, User
 from app.integrations.lichess.service import ensure_local_user, lichess_api_url
 from tests.test_prototype_api import SAMPLE_PGN
 
@@ -437,6 +438,139 @@ def test_reprocess_game_updates_existing_story(monkeypatch) -> None:
         assert len(session.scalars(select(Game)).all()) == 1
 
 
+def test_analyze_updates_daily_game_into_swindle_with_key_position(monkeypatch) -> None:
+    payload = base_payload(
+        "eval-swindle",
+        players={
+            "white": {"user": {"name": "clevermike"}, "rating": 1392, "ratingDiff": 14},
+            "black": {"user": {"name": "nearPeer"}, "rating": 1400, "ratingDiff": -14},
+        },
+    )
+    MockAsyncClient.payloads = [payload]
+    monkeypatch.setattr(httpx, "AsyncClient", MockAsyncClient)
+    evals = iter([-20, -520, -450, 120, 240, 320])
+
+    def fake_cloud_eval(fen: str) -> dict:
+        return {"cp": next(evals, 300), "mate": None, "depth": 21}
+
+    monkeypatch.setattr(analysis, "fetch_cloud_eval", fake_cloud_eval)
+    client = connected_client()
+    client.post("/api/v1/games/import/lichess")
+    game = client.get("/api/v1/games").json()[0]
+    assert game["story"]["primary_story"] == "daily_activity"
+
+    response = client.post(f"/api/v1/games/{game['id']}/analyze")
+    card = client.get(f"/api/v1/games/{game['id']}/share-card").json()
+
+    assert response.status_code == 200
+    assert response.json()["story"]["primary_story"] == "swindle"
+    assert response.json()["story"]["key_position_fen"]
+    assert card["story"]["primary_story"] == "swindle"
+    assert card["board_position_source"] == "key_position"
+    assert card["metrics"]["lowest_eval"] <= -5.0
+    assert card["metrics"]["analysis_status"] in {"partial", "complete"}
+    assert card["metrics"]["eval_points"] >= 2
+    assert response.json()["metrics"]["eval_points"] >= 2
+    assert response.json()["metrics"]["analysis_source"] == "lichess_cloud_eval"
+    MockAsyncClient.payloads = None
+
+
+def test_analyze_updates_daily_game_into_heartbreaker(monkeypatch) -> None:
+    payload = base_payload(
+        "eval-heartbreaker",
+        players={
+            "white": {"user": {"name": "clevermike"}, "rating": 1392, "ratingDiff": -10},
+            "black": {"user": {"name": "nearPeer"}, "rating": 1400, "ratingDiff": 10},
+        },
+        pgn=SAMPLE_PGN.replace('[Result "1-0"]', '[Result "0-1"]').replace("31. Be6 1-0", "31. Be6 0-1"),
+    )
+    MockAsyncClient.payloads = [payload]
+    monkeypatch.setattr(httpx, "AsyncClient", MockAsyncClient)
+    evals = iter([20, 520, 500, 120, -120, -240])
+
+    def fake_cloud_eval(fen: str) -> dict:
+        return {"cp": next(evals, -250), "mate": None, "depth": 21}
+
+    monkeypatch.setattr(analysis, "fetch_cloud_eval", fake_cloud_eval)
+    client = connected_client()
+    client.post("/api/v1/games/import/lichess")
+    game = client.get("/api/v1/games").json()[0]
+
+    response = client.post(f"/api/v1/games/{game['id']}/analyze")
+    card = client.get(f"/api/v1/games/{game['id']}/share-card").json()
+
+    assert response.status_code == 200
+    assert response.json()["story"]["primary_story"] == "heartbreaker"
+    assert card["story"]["primary_story"] == "heartbreaker"
+    assert card["board_position_source"] == "key_position"
+    assert card["metrics"]["highest_eval"] >= 5.0
+    MockAsyncClient.payloads = None
+
+
+def test_debug_eval_updates_card_into_swindle(monkeypatch) -> None:
+    MockAsyncClient.payloads = [quiet_payload("debug-swindle", winner="white")]
+    monkeypatch.setattr(httpx, "AsyncClient", MockAsyncClient)
+    client = connected_client()
+    client.post("/api/v1/games/import/lichess")
+    game = client.get("/api/v1/games").json()[0]
+
+    response = client.post(
+        f"/api/v1/games/{game['id']}/debug-eval",
+        json={"eval_curve": [{"eval": 0.2}, {"eval": -5.2}, {"eval": 1.4}], "analysis_status": "complete"},
+    )
+    card = client.get(f"/api/v1/games/{game['id']}/share-card").json()
+
+    assert response.status_code == 200
+    assert response.json()["story"]["primary_story"] == "swindle"
+    assert response.json()["story"]["interesting_score"] >= 0.75
+    assert card["story"]["badge_label"] == "The Swindle"
+    assert card["story"]["headline"] == "Completely lost, somehow walked out with the full point."
+    assert card["board_position_source"] == "key_position"
+    MockAsyncClient.payloads = None
+
+
+def test_debug_eval_updates_card_into_heartbreaker(monkeypatch) -> None:
+    MockAsyncClient.payloads = [quiet_payload("debug-heartbreaker", winner="black")]
+    monkeypatch.setattr(httpx, "AsyncClient", MockAsyncClient)
+    client = connected_client()
+    client.post("/api/v1/games/import/lichess")
+    game = client.get("/api/v1/games").json()[0]
+
+    response = client.post(
+        f"/api/v1/games/{game['id']}/debug-eval",
+        json={"eval_curve": [{"eval": 0.2}, {"eval": 5.3}, {"eval": -1.4}], "analysis_status": "complete"},
+    )
+    card = client.get(f"/api/v1/games/{game['id']}/share-card").json()
+
+    assert response.status_code == 200
+    assert response.json()["story"]["primary_story"] == "heartbreaker"
+    assert card["story"]["badge_label"] == "Heartbreaker"
+    assert card["story"]["headline"] == "Had the game in hand, then watched it slip away."
+    assert card["board_position_source"] == "key_position"
+    MockAsyncClient.payloads = None
+
+
+def test_debug_eval_updates_card_into_turning_point(monkeypatch) -> None:
+    MockAsyncClient.payloads = [quiet_payload("debug-turning-point", winner=None)]
+    monkeypatch.setattr(httpx, "AsyncClient", MockAsyncClient)
+    client = connected_client()
+    client.post("/api/v1/games/import/lichess")
+    game = client.get("/api/v1/games").json()[0]
+
+    response = client.post(
+        f"/api/v1/games/{game['id']}/debug-eval",
+        json={"eval_curve": [{"eval": 0.1}, {"eval": 2.9}, {"eval": 2.7}], "analysis_status": "complete"},
+    )
+    card = client.get(f"/api/v1/games/{game['id']}/share-card").json()
+
+    assert response.status_code == 200
+    assert response.json()["story"]["primary_story"] == "turning_point"
+    assert card["story"]["badge_label"] == "Turning Point"
+    assert card["metrics"]["biggest_eval_swing"] >= 2.5
+    assert card["board_position_source"] == "key_position"
+    MockAsyncClient.payloads = None
+
+
 def test_reprocess_all_updates_stale_headline(monkeypatch) -> None:
     monkeypatch.setattr(httpx, "AsyncClient", MockAsyncClient)
     client = connected_client()
@@ -473,9 +607,164 @@ def test_five_real_shape_imported_games_render_share_cards(monkeypatch) -> None:
     MockAsyncClient.payloads = None
 
 
-def connected_client() -> TestClient:
+def test_publish_story_creates_public_post(monkeypatch) -> None:
+    monkeypatch.setattr(httpx, "AsyncClient", MockAsyncClient)
+    client = connected_client()
+    client.post("/api/v1/games/import/lichess")
+    game = client.get("/api/v1/games").json()[0]
+
+    response = client.post(f"/api/v1/stories/{game['story']['id']}/publish")
+
+    assert response.status_code == 200
+    assert response.json()["visibility"] == "public"
+    assert response.json()["game_story_id"] == game["story"]["id"]
+    with get_session() as session:
+        assert len(session.scalars(select(PublishedPost)).all()) == 1
+
+
+def test_publish_story_twice_does_not_duplicate(monkeypatch) -> None:
+    monkeypatch.setattr(httpx, "AsyncClient", MockAsyncClient)
+    client = connected_client()
+    client.post("/api/v1/games/import/lichess")
+    story_id = client.get("/api/v1/games").json()[0]["story"]["id"]
+
+    first = client.post(f"/api/v1/stories/{story_id}/publish").json()
+    second = client.post(f"/api/v1/stories/{story_id}/publish").json()
+
+    assert first["id"] == second["id"]
+    with get_session() as session:
+        assert len(session.scalars(select(PublishedPost)).all()) == 1
+
+
+def test_unpublish_removes_post_from_public_profile(monkeypatch) -> None:
+    monkeypatch.setattr(httpx, "AsyncClient", MockAsyncClient)
+    client = connected_client()
+    client.post("/api/v1/games/import/lichess")
+    story_id = client.get("/api/v1/games").json()[0]["story"]["id"]
+    post = client.post(f"/api/v1/stories/{story_id}/publish").json()
+
+    response = client.post(f"/api/v1/posts/{post['id']}/unpublish")
+    profile = client.get("/api/v1/profiles/clevermike")
+
+    assert response.status_code == 200
+    assert response.json()["visibility"] == "unpublished"
+    assert profile.status_code == 200
+    assert profile.json()["posts"] == []
+    assert profile.json()["published_cards_count"] == 0
+
+
+def test_private_journal_games_do_not_appear_on_public_profile(monkeypatch) -> None:
+    monkeypatch.setattr(httpx, "AsyncClient", MockAsyncClient)
+    client = connected_client()
+    client.post("/api/v1/games/import/lichess")
+
+    profile = client.get("/api/v1/profiles/clevermike")
+
+    assert profile.status_code == 200
+    assert profile.json()["posts"] == []
+    assert profile.json()["games_imported"] == 1
+
+
+def test_profile_endpoint_returns_only_public_posts(monkeypatch) -> None:
+    MockAsyncClient.payloads = [base_payload("public-one"), base_payload("public-two")]
+    monkeypatch.setattr(httpx, "AsyncClient", MockAsyncClient)
+    client = connected_client()
+    client.post("/api/v1/games/import/lichess")
+    games = client.get("/api/v1/games").json()
+    public_post = client.post(f"/api/v1/stories/{games[0]['story']['id']}/publish").json()
+    unpublished_post = client.post(f"/api/v1/stories/{games[1]['story']['id']}/publish").json()
+    client.post(f"/api/v1/posts/{unpublished_post['id']}/unpublish")
+
+    profile = client.get("/api/v1/profiles/clevermike")
+
+    assert profile.status_code == 200
+    assert [post["id"] for post in profile.json()["posts"]] == [public_post["id"]]
+    MockAsyncClient.payloads = None
+
+
+def test_public_profile_display_name_uses_lichess_username_for_local_session(monkeypatch) -> None:
+    monkeypatch.setattr(httpx, "AsyncClient", MockAsyncClient)
+    session_id = "session-1781471651808-46122pw6o"
+    client = connected_client(session_id=session_id)
+    client.post("/api/v1/games/import/lichess", headers={"X-Session-Id": session_id})
+    story_id = client.get("/api/v1/games", headers={"X-Session-Id": session_id}).json()[0]["story"]["id"]
+    client.post(f"/api/v1/stories/{story_id}/publish", headers={"X-Session-Id": session_id})
+
+    response = client.get("/api/v1/profiles/clevermike")
+    body = response.json()
+
+    assert response.status_code == 200
+    assert body["display_name"] == "clevermike"
+    assert body["profile_slug"] == "clevermike"
+    assert body["lichess_username"] == "clevermike"
+    assert body["published_cards_count"] == 1
+    assert "local-session" not in json.dumps(body)
+
+
+def test_profile_slug_does_not_resolve_internal_local_session_username(monkeypatch) -> None:
+    monkeypatch.setattr(httpx, "AsyncClient", MockAsyncClient)
+    session_id = "session-1781471651808-46122pw6o"
+    client = connected_client(session_id=session_id)
+
+    response = client.get("/api/v1/profiles/local-session-1781471651808-46122pw6o")
+
+    assert response.status_code == 404
+
+
+def test_profile_resolution_prefers_matching_lichess_account_with_public_posts(monkeypatch) -> None:
+    monkeypatch.setattr(httpx, "AsyncClient", MockAsyncClient)
+    first_session = "session-no-posts"
+    second_session = "session-with-posts"
+    client = connected_client(session_id=first_session)
+    connected_client(session_id=second_session)
+    client.post("/api/v1/games/import/lichess", headers={"X-Session-Id": second_session})
+    story_id = client.get("/api/v1/games", headers={"X-Session-Id": second_session}).json()[0]["story"]["id"]
+    public_post = client.post(f"/api/v1/stories/{story_id}/publish", headers={"X-Session-Id": second_session}).json()
+
+    profile = client.get("/api/v1/profiles/clevermike")
+
+    assert profile.status_code == 200
+    assert profile.json()["published_cards_count"] == 1
+    assert [post["id"] for post in profile.json()["posts"]] == [public_post["id"]]
+
+
+def test_reprocessing_published_story_keeps_public_post_available(monkeypatch) -> None:
+    monkeypatch.setattr(httpx, "AsyncClient", MockAsyncClient)
+    client = connected_client()
+    client.post("/api/v1/games/import/lichess")
+    game = client.get("/api/v1/games").json()[0]
+    post = client.post(f"/api/v1/stories/{game['story']['id']}/publish").json()
+
+    reprocess = client.post(f"/api/v1/games/{game['id']}/process")
+    public_post = client.get(f"/api/v1/posts/{post['id']}")
+
+    assert reprocess.status_code == 200
+    assert public_post.status_code == 200
+    assert public_post.json()["headline"] == public_post.json()["story"]["headline"]
+
+
+def test_public_post_fetches_share_card_data(monkeypatch) -> None:
+    monkeypatch.setattr(httpx, "AsyncClient", MockAsyncClient)
+    client = connected_client()
+    client.post("/api/v1/games/import/lichess")
+    story_id = client.get("/api/v1/games").json()[0]["story"]["id"]
+    post = client.post(f"/api/v1/stories/{story_id}/publish").json()
+
+    response = client.get(f"/api/v1/posts/{post['id']}")
+
+    assert response.status_code == 200
+    assert response.json()["share_card"]["story"]["headline"]
+    assert response.json()["share_card"]["game"]["platform"] == "lichess"
+    assert response.json()["display_name"] == "clevermike"
+    assert "user_id" not in response.json()
+    assert "raw_payload" not in response.json()
+    assert "pgn" not in json.dumps(response.json()).lower()
+
+
+def connected_client(session_id: str | None = None) -> TestClient:
     client = TestClient(app)
-    client.get("/api/v1/integrations/lichess/connect", follow_redirects=False)
+    headers = {"X-Session-Id": session_id} if session_id else None
+    client.get("/api/v1/integrations/lichess/connect", headers=headers, follow_redirects=False)
     with get_session() as session:
         state = session.scalar(select(OAuthState.state))
     client.get(f"/api/v1/integrations/lichess/callback?code=oauth-code&state={state}", follow_redirects=False)
@@ -520,6 +809,14 @@ def moves_payload(game_id: str, *, moves: str, winner: str | None = "white") -> 
     if winner is not None:
         payload["winner"] = winner
     return payload
+
+
+def quiet_payload(game_id: str, *, winner: str | None) -> dict[str, Any]:
+    return moves_payload(
+        game_id,
+        moves="e4 e5 Nf3 Nc6 Bb5 a6 Ba4 Nf6 O-O Be7 Re1 b5 Bb3 d6",
+        winner=winner,
+    )
 
 
 def repetition_moves(cycles: int) -> str:
