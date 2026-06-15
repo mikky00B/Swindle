@@ -1,0 +1,1 @@
+"""Share card data contracts."""

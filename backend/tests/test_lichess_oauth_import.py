@@ -1,0 +1,526 @@
+from __future__ import annotations
+
+import json
+from typing import Any
+
+import httpx
+from fastapi.testclient import TestClient
+from sqlalchemy import select
+
+from app.core.database import get_session
+from app.main import app
+from app.models import Game, GameStory, OAuthState, SuggestedPost, User
+from app.integrations.lichess.service import ensure_local_user, lichess_api_url
+from tests.test_prototype_api import SAMPLE_PGN
+
+
+class MockAsyncClient:
+    payloads: list[dict[str, Any]] | None = None
+    status_code: int = 200
+    account_status_code: int = 200
+
+    def __init__(self, *args: Any, **kwargs: Any) -> None:
+        pass
+
+    async def __aenter__(self) -> "MockAsyncClient":
+        return self
+
+    async def __aexit__(self, *args: Any) -> None:
+        return None
+
+    async def post(self, url: str, **kwargs: Any) -> httpx.Response:
+        assert kwargs["data"]["code"] == "oauth-code"
+        assert kwargs["data"]["code_verifier"]
+        return httpx.Response(
+            200,
+            json={"access_token": "lichess-access-token", "scope": "email:read", "token_type": "Bearer"},
+            request=httpx.Request("POST", url),
+        )
+
+    async def get(self, url: str, **kwargs: Any) -> httpx.Response:
+        assert kwargs["headers"]["Authorization"] == "Bearer lichess-access-token"
+        if url.endswith("/api/account"):
+            if self.account_status_code != 200:
+                return httpx.Response(self.account_status_code, text="bad account", request=httpx.Request("GET", url))
+            return httpx.Response(200, json={"id": "clevermike", "username": "clevermike"}, request=httpx.Request("GET", url))
+        if self.status_code != 200:
+            return httpx.Response(self.status_code, text="error", request=httpx.Request("GET", url))
+        payloads = self.payloads if self.payloads is not None else [base_payload("game-one")]
+        return httpx.Response(
+            200,
+            text="".join(json.dumps(payload) + "\n" for payload in payloads),
+            request=httpx.Request("GET", url),
+        )
+
+
+def test_oauth_callback_stores_connected_account(monkeypatch) -> None:
+    monkeypatch.setattr(httpx, "AsyncClient", MockAsyncClient)
+    client = TestClient(app)
+
+    connect = client.get("/api/v1/integrations/lichess/connect", follow_redirects=False)
+    assert connect.status_code == 302
+    with get_session() as session:
+        state = session.scalar(select(OAuthState.state))
+
+    callback = client.get(
+        f"/api/v1/integrations/lichess/callback?code=oauth-code&state={state}",
+        follow_redirects=False,
+    )
+
+    assert callback.status_code == 302
+    status = client.get("/api/v1/integrations/lichess/status")
+    assert status.json()["connected"] is True
+    assert status.json()["platform_username"] == "clevermike"
+
+
+def test_connect_url_endpoint_returns_oauth_url_for_session_user() -> None:
+    client = TestClient(app)
+
+    response = client.get(
+        "/api/v1/integrations/lichess/connect-url",
+        headers={"X-Session-Id": "session-1781471651808-46122pw6o"},
+    )
+
+    assert response.status_code == 200
+    assert response.json()["url"].startswith("https://lichess.org/oauth?")
+    with get_session() as session:
+        user = session.get(User, "session-1781471651808-46122pw6o")
+        state = session.scalar(select(OAuthState))
+    assert user is not None
+    assert user.username == "local-session-1781471651808-46122pw6o"
+    assert state is not None
+    assert state.user_id == user.id
+
+
+def test_local_session_users_get_unique_placeholder_usernames() -> None:
+    with get_session() as session:
+        first = ensure_local_user(session, "session-1781471651808-46122pw6o")
+        second = ensure_local_user(session, "session-1781471651808-otheruser")
+
+    assert first.username == "local-session-1781471651808-46122pw6o"
+    assert second.username == "local-session-1781471651808-otheruser"
+    with get_session() as session:
+        assert len(session.scalars(select(User)).all()) == 2
+
+
+def test_lichess_api_url_accepts_root_or_api_base(monkeypatch) -> None:
+    monkeypatch.setenv("LICHESS_API_BASE_URL", "https://lichess.org")
+    from app.core.config import get_settings
+
+    get_settings.cache_clear()
+    assert lichess_api_url("/account") == "https://lichess.org/api/account"
+
+    monkeypatch.setenv("LICHESS_API_BASE_URL", "https://lichess.org/api")
+    get_settings.cache_clear()
+    assert lichess_api_url("/account") == "https://lichess.org/api/account"
+
+
+def test_invalid_oauth_state_is_rejected() -> None:
+    client = TestClient(app)
+
+    response = client.get("/api/v1/integrations/lichess/callback?code=oauth-code&state=bad", follow_redirects=False)
+
+    assert response.status_code == 302
+    assert "lichess=error" in response.headers["location"]
+
+
+def test_callback_redirects_with_error_when_account_lookup_fails(monkeypatch) -> None:
+    MockAsyncClient.account_status_code = 404
+    monkeypatch.setattr(httpx, "AsyncClient", MockAsyncClient)
+    client = TestClient(app)
+    client.get("/api/v1/integrations/lichess/connect", follow_redirects=False)
+    with get_session() as session:
+        state = session.scalar(select(OAuthState.state))
+
+    response = client.get(
+        f"/api/v1/integrations/lichess/callback?code=oauth-code&state={state}",
+        follow_redirects=False,
+    )
+
+    assert response.status_code == 302
+    assert "lichess=error" in response.headers["location"]
+    MockAsyncClient.account_status_code = 200
+
+
+def test_disconnect_removes_connected_account(monkeypatch) -> None:
+    monkeypatch.setattr(httpx, "AsyncClient", MockAsyncClient)
+    client = TestClient(app)
+    connect = client.get("/api/v1/integrations/lichess/connect", follow_redirects=False)
+    with get_session() as session:
+        state = session.scalar(select(OAuthState.state))
+    client.get(f"/api/v1/integrations/lichess/callback?code=oauth-code&state={state}", follow_redirects=False)
+
+    response = client.post("/api/v1/integrations/lichess/disconnect")
+
+    assert response.status_code == 200
+    assert response.json()["disconnected"] is True
+    assert client.get("/api/v1/integrations/lichess/status").json()["connected"] is False
+
+
+def test_import_latest_games_deduplicates_and_generates_share_card(monkeypatch) -> None:
+    monkeypatch.setattr(httpx, "AsyncClient", MockAsyncClient)
+    client = TestClient(app)
+    connect = client.get("/api/v1/integrations/lichess/connect", follow_redirects=False)
+    with get_session() as session:
+        state = session.scalar(select(OAuthState.state))
+    client.get(f"/api/v1/integrations/lichess/callback?code=oauth-code&state={state}", follow_redirects=False)
+
+    first = client.post("/api/v1/games/import/lichess")
+    second = client.post("/api/v1/games/import/lichess")
+    journal = client.get("/api/v1/games")
+
+    assert first.status_code == 200
+    assert first.json() == {"imported": 1, "duplicates": 0, "skipped": 0, "total_seen": 1, "errors": []}
+    assert second.json() == {"imported": 0, "duplicates": 1, "skipped": 0, "total_seen": 1, "errors": []}
+    assert len(journal.json()) == 1
+    game_id = journal.json()[0]["id"]
+
+    card = client.get(f"/api/v1/games/{game_id}/share-card")
+    assert card.status_code == 200
+    assert card.json()["player"]["username"] == "clevermike"
+    assert card.json()["game"]["moves"] == 31
+    assert card.json()["game"]["user_color"] == "white"
+    assert card.json()["game"]["opponent_username"] == "higherRated"
+    assert card.json()["game"]["final_fen"]
+    assert card.json()["board_position_source"] == "final_position"
+    assert card.json()["story"]["key_position_fen"]
+
+    debug = client.get(f"/api/v1/games/{game_id}/debug")
+    assert debug.status_code == 200
+    assert debug.json()["final_fen"] == card.json()["game"]["final_fen"]
+    assert debug.json()["card_fen"] == card.json()["story"]["key_position_fen"]
+
+
+def test_giant_slayer_import_creates_suggested_story(monkeypatch) -> None:
+    MockAsyncClient.payloads = [base_payload("giant-slayer")]
+    monkeypatch.setattr(httpx, "AsyncClient", MockAsyncClient)
+    client = connected_client()
+
+    client.post("/api/v1/games/import/lichess")
+    suggestions = client.get("/api/v1/stories/suggested")
+
+    assert suggestions.status_code == 200
+    assert len(suggestions.json()) == 1
+    assert suggestions.json()[0]["story"]["primary_story"] == "giant_slayer"
+    assert suggestions.json()[0]["story"]["interesting_score"] >= 0.75
+    MockAsyncClient.payloads = None
+
+
+def test_miniature_import_creates_suggested_story(monkeypatch) -> None:
+    MockAsyncClient.payloads = [moves_payload("miniature", moves="e4 e5 Qh5 Nc6 Bc4 Nf6 Qxf7#")]
+    monkeypatch.setattr(httpx, "AsyncClient", MockAsyncClient)
+    client = connected_client()
+
+    client.post("/api/v1/games/import/lichess")
+    suggestion = client.get("/api/v1/stories/suggested").json()[0]
+
+    assert suggestion["story"]["primary_story"] == "miniature"
+    assert suggestion["moves_count"] == 4
+    MockAsyncClient.payloads = None
+
+
+def test_long_grind_import_creates_suggested_story_when_threshold_is_met(monkeypatch) -> None:
+    MockAsyncClient.payloads = [moves_payload("long-grind", moves=repetition_moves(35), winner=None)]
+    monkeypatch.setattr(httpx, "AsyncClient", MockAsyncClient)
+    client = connected_client()
+
+    client.post("/api/v1/games/import/lichess")
+    suggestion = client.get("/api/v1/stories/suggested").json()[0]
+
+    assert suggestion["story"]["primary_story"] == "long_grind"
+    assert suggestion["story"]["interesting_score"] >= 0.70
+    assert suggestion["moves_count"] == 70
+    MockAsyncClient.payloads = None
+
+
+def test_daily_game_does_not_create_suggested_story_by_default(monkeypatch) -> None:
+    MockAsyncClient.payloads = [moves_payload("daily", moves=repetition_moves(19), winner=None)]
+    monkeypatch.setattr(httpx, "AsyncClient", MockAsyncClient)
+    client = connected_client()
+
+    client.post("/api/v1/games/import/lichess")
+    suggestions = client.get("/api/v1/stories/suggested")
+
+    assert suggestions.json() == []
+    with get_session() as session:
+        assert len(session.scalars(select(SuggestedPost)).all()) == 0
+    MockAsyncClient.payloads = None
+
+
+def test_ignored_suggestion_disappears_but_game_stays_in_journal(monkeypatch) -> None:
+    MockAsyncClient.payloads = [base_payload("ignored-giant")]
+    monkeypatch.setattr(httpx, "AsyncClient", MockAsyncClient)
+    client = connected_client()
+    client.post("/api/v1/games/import/lichess")
+    suggestion = client.get("/api/v1/stories/suggested").json()[0]
+
+    response = client.post(f"/api/v1/stories/{suggestion['story']['id']}/ignore")
+
+    assert response.status_code == 200
+    assert client.get("/api/v1/stories/suggested").json() == []
+    journal = client.get("/api/v1/games").json()
+    assert len(journal) == 1
+    assert journal[0]["external_game_id"] == "ignored-giant"
+    MockAsyncClient.payloads = None
+
+
+def test_reset_ignored_suggestions_restores_suggested_items(monkeypatch) -> None:
+    MockAsyncClient.payloads = [base_payload("reset-giant")]
+    monkeypatch.setattr(httpx, "AsyncClient", MockAsyncClient)
+    client = connected_client()
+    client.post("/api/v1/games/import/lichess")
+    suggestion = client.get("/api/v1/stories/suggested").json()[0]
+    client.post(f"/api/v1/stories/{suggestion['story']['id']}/ignore")
+
+    response = client.post("/api/v1/stories/reset-ignored")
+
+    assert response.status_code == 200
+    assert response.json()["restored"] == 1
+    assert len(client.get("/api/v1/stories/suggested").json()) == 1
+    MockAsyncClient.payloads = None
+
+
+def test_import_latest_games_uses_session_user_id(monkeypatch) -> None:
+    monkeypatch.setattr(httpx, "AsyncClient", MockAsyncClient)
+    session_headers = {"X-Session-Id": "session-import-user"}
+    client = TestClient(app)
+    client.get("/api/v1/integrations/lichess/connect-url", headers=session_headers)
+    with get_session() as session:
+        state = session.scalar(select(OAuthState.state))
+    client.get(f"/api/v1/integrations/lichess/callback?code=oauth-code&state={state}", follow_redirects=False)
+
+    response = client.post("/api/v1/games/import/lichess", headers=session_headers)
+    journal = client.get("/api/v1/games", headers=session_headers)
+    default_journal = client.get("/api/v1/games")
+
+    assert response.status_code == 200
+    assert response.json()["imported"] == 1
+    assert len(journal.json()) == 1
+    assert default_journal.json() == []
+
+
+def test_import_handles_missing_fields_without_failing(monkeypatch) -> None:
+    MockAsyncClient.payloads = [
+        base_payload(
+            "ok-no-opening",
+            opening=None,
+            players={"white": {"user": {"name": "clevermike"}}, "black": {}},
+            pgn=SAMPLE_PGN.replace('[Opening "Sicilian Defense"]\n', "")
+            .replace('[WhiteElo "1392"]\n', "")
+            .replace('[BlackElo "1560"]\n', ""),
+        ),
+        {"id": "missing-pgn"},
+    ]
+    monkeypatch.setattr(httpx, "AsyncClient", MockAsyncClient)
+    client = connected_client()
+
+    response = client.post("/api/v1/games/import/lichess")
+    journal = client.get("/api/v1/games")
+
+    assert response.status_code == 200
+    assert response.json()["imported"] == 1
+    assert response.json()["skipped"] == 1
+    assert journal.json()[0]["opening_name"] is None
+    assert journal.json()[0]["opponent_rating"] is None
+    MockAsyncClient.payloads = None
+
+
+def test_import_replays_lichess_moves_when_pgn_is_missing(monkeypatch) -> None:
+    MockAsyncClient.payloads = [
+        {
+            "id": "moves-only",
+            "moves": "e4 e5 Nf3 Nc6 Bb5 a6",
+            "winner": "white",
+            "status": "mate",
+            "rated": True,
+            "speed": "blitz",
+            "clock": {"initial": 300, "increment": 0},
+            "createdAt": 1781432100000,
+            "opening": {"eco": "C60", "name": "Ruy Lopez"},
+            "players": {
+                "white": {"user": {"name": "clevermike"}, "rating": 1392, "ratingDiff": 8},
+                "black": {"user": {"name": "Bai_Daniil"}, "rating": 1096, "ratingDiff": -8},
+            },
+        }
+    ]
+    monkeypatch.setattr(httpx, "AsyncClient", MockAsyncClient)
+    client = connected_client()
+
+    response = client.post("/api/v1/games/import/lichess")
+    game = client.get("/api/v1/games").json()[0]
+    card = client.get(f"/api/v1/games/{game['id']}/share-card").json()
+    debug = client.get(f"/api/v1/games/{game['id']}/debug").json()
+
+    assert response.json()["imported"] == 1
+    assert game["moves_count"] == 3
+    assert game["final_fen"] == "r1bqkbnr/1ppp1ppp/p1n5/1B2p3/4P3/5N2/PPPP1PPP/RNBQK2R w KQkq - 0 4"
+    assert card["game"]["final_fen"] == game["final_fen"]
+    assert card["story"]["key_position_fen"] == game["final_fen"]
+    assert card["board_position_source"] == "final_position"
+    assert debug["card_fen"] == game["final_fen"]
+    MockAsyncClient.payloads = None
+
+
+def test_reprocess_backfills_missing_final_fen_from_raw_moves(monkeypatch) -> None:
+    MockAsyncClient.payloads = [
+        {
+            "id": "stale-moves-only",
+            "moves": "e4 e5 Nf3 Nc6 Bb5 a6",
+            "winner": "white",
+            "speed": "blitz",
+            "players": {
+                "white": {"user": {"name": "clevermike"}, "rating": 1392},
+                "black": {"user": {"name": "Bai_Daniil"}, "rating": 1096},
+            },
+        }
+    ]
+    monkeypatch.setattr(httpx, "AsyncClient", MockAsyncClient)
+    client = connected_client()
+    client.post("/api/v1/games/import/lichess")
+    game_id = client.get("/api/v1/games").json()[0]["id"]
+    with get_session() as session:
+        game = session.get(Game, game_id)
+        game.final_fen = None
+        game.story.key_position_fen = "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1"
+        game.story.share_card_data = {
+            **game.story.share_card_data,
+            "board_position_source": "fallback_starting_position",
+            "game": {**game.story.share_card_data["game"], "final_fen": None},
+        }
+
+    response = client.post(f"/api/v1/games/{game_id}/process")
+    card = client.get(f"/api/v1/games/{game_id}/share-card").json()
+
+    assert response.status_code == 200
+    assert response.json()["final_fen"] == "r1bqkbnr/1ppp1ppp/p1n5/1B2p3/4P3/5N2/PPPP1PPP/RNBQK2R w KQkq - 0 4"
+    assert card["story"]["key_position_fen"] == response.json()["final_fen"]
+    assert card["board_position_source"] == "final_position"
+    MockAsyncClient.payloads = None
+
+
+def test_import_private_account_error_is_clear(monkeypatch) -> None:
+    MockAsyncClient.status_code = 403
+    monkeypatch.setattr(httpx, "AsyncClient", MockAsyncClient)
+    client = connected_client()
+
+    response = client.post("/api/v1/games/import/lichess")
+
+    assert response.status_code == 400
+    assert "private" in response.json()["detail"]
+    MockAsyncClient.status_code = 200
+
+
+def test_empty_game_import_is_successful(monkeypatch) -> None:
+    MockAsyncClient.payloads = []
+    monkeypatch.setattr(httpx, "AsyncClient", MockAsyncClient)
+    client = connected_client()
+
+    response = client.post("/api/v1/games/import/lichess")
+
+    assert response.status_code == 200
+    assert response.json() == {"imported": 0, "duplicates": 0, "skipped": 0, "total_seen": 0, "errors": []}
+    MockAsyncClient.payloads = None
+
+
+def test_reprocess_game_updates_existing_story(monkeypatch) -> None:
+    monkeypatch.setattr(httpx, "AsyncClient", MockAsyncClient)
+    client = connected_client()
+    client.post("/api/v1/games/import/lichess")
+    game_id = client.get("/api/v1/games").json()[0]["id"]
+
+    response = client.post(f"/api/v1/games/{game_id}/process")
+
+    assert response.status_code == 200
+    assert response.json()["processing_status"] == "processed"
+    with get_session() as session:
+        assert len(session.scalars(select(GameStory)).all()) == 1
+        assert len(session.scalars(select(Game)).all()) == 1
+
+
+def test_reprocess_all_updates_stale_headline(monkeypatch) -> None:
+    monkeypatch.setattr(httpx, "AsyncClient", MockAsyncClient)
+    client = connected_client()
+    client.post("/api/v1/games/import/lichess")
+    game_id = client.get("/api/v1/games").json()[0]["id"]
+    with get_session() as session:
+        story = session.scalar(select(GameStory))
+        story.primary_story = "daily_activity"
+        story.badge_label = "Daily Game"
+        story.headline = "Another game added to the chess journal."
+        story.interesting_score = 0.1
+
+    response = client.post("/api/v1/games/reprocess-all")
+    detail = client.get(f"/api/v1/games/{game_id}")
+
+    assert response.status_code == 200
+    assert response.json()["processed"] == 1
+    assert detail.json()["story"]["headline"] != "Another game added to the chess journal."
+
+
+def test_five_real_shape_imported_games_render_share_cards(monkeypatch) -> None:
+    MockAsyncClient.payloads = [base_payload(f"real-shape-{index}") for index in range(5)]
+    monkeypatch.setattr(httpx, "AsyncClient", MockAsyncClient)
+    client = connected_client()
+
+    response = client.post("/api/v1/games/import/lichess")
+
+    assert response.json()["imported"] == 5
+    for game in client.get("/api/v1/games").json():
+        card = client.get(f"/api/v1/games/{game['id']}/share-card")
+        assert card.status_code == 200
+        assert card.json()["story"]["headline"]
+        assert card.json()["story"]["key_position_fen"]
+    MockAsyncClient.payloads = None
+
+
+def connected_client() -> TestClient:
+    client = TestClient(app)
+    client.get("/api/v1/integrations/lichess/connect", follow_redirects=False)
+    with get_session() as session:
+        state = session.scalar(select(OAuthState.state))
+    client.get(f"/api/v1/integrations/lichess/callback?code=oauth-code&state={state}", follow_redirects=False)
+    return client
+
+
+def base_payload(
+    game_id: str,
+    *,
+    opening: dict[str, str] | None = {"eco": "B20", "name": "Sicilian Defense"},
+    players: dict[str, Any] | None = None,
+    pgn: str | None = None,
+) -> dict[str, Any]:
+    return {
+        "id": game_id,
+        "pgn": (pgn or SAMPLE_PGN).replace("https://lichess.org/example", f"https://lichess.org/{game_id}"),
+        "speed": "blitz",
+        "clock": {"initial": 300, "increment": 0},
+        "createdAt": 1781432100000,
+        "opening": opening,
+        "players": players
+        or {
+            "white": {"rating": 1392, "ratingDiff": 14},
+            "black": {"rating": 1560, "ratingDiff": -14},
+        },
+    }
+
+
+def moves_payload(game_id: str, *, moves: str, winner: str | None = "white") -> dict[str, Any]:
+    payload: dict[str, Any] = {
+        "id": game_id,
+        "moves": moves,
+        "speed": "blitz",
+        "clock": {"initial": 300, "increment": 0},
+        "createdAt": 1781432100000,
+        "opening": {"eco": "A04", "name": "Zukertort Opening"},
+        "players": {
+            "white": {"user": {"name": "clevermike"}, "rating": 1392, "ratingDiff": 4},
+            "black": {"user": {"name": "Bai_Daniil"}, "rating": 1401, "ratingDiff": -4},
+        },
+    }
+    if winner is not None:
+        payload["winner"] = winner
+    return payload
+
+
+def repetition_moves(cycles: int) -> str:
+    return " ".join(["Nf3", "Nf6", "Ng1", "Ng8"] * cycles)
