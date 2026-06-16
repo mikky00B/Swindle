@@ -55,20 +55,6 @@ export function lichessConnectUrl(): string {
   return `${API_BASE}/integrations/lichess/connect`;
 }
 
-export async function connectLichessWithSession(): Promise<string> {
-  const response = await fetch(`${API_BASE}/integrations/lichess/connect-url`, {
-    method: "GET",
-    headers: makeHeaders(),
-  });
-
-  const body = await readJson<{ url: string }>(response, "Could not start Lichess OAuth");
-  if (!body.url) {
-    throw new Error("No OAuth URL from connect endpoint");
-  }
-
-  return body.url;
-}
-
 export async function getLichessStatus(): Promise<LichessStatus> {
   const response = await fetch(`${API_BASE}/integrations/lichess/status`, {
     headers: makeHeaders(),

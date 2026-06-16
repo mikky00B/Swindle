@@ -16,7 +16,7 @@ import {
   getPublicProfile,
   ignoreSuggestedStory,
   importLatestLichessGames,
-  connectLichessWithSession,
+  lichessConnectUrl,
   listComments,
   listFeed,
   listJournalGames,
@@ -586,12 +586,7 @@ function JournalControls({
             </button>
           </>
         ) : (
-          <button type="button" onClick={() => {
-            void (async () => {
-              const redirectUrl = await connectLichessWithSession();
-              window.location.href = redirectUrl;
-            })();
-          }}>
+          <button type="button" onClick={() => window.location.assign(lichessConnectUrl())}>
             Connect Lichess
           </button>
         )}
