@@ -2,16 +2,35 @@ import assert from "node:assert/strict";
 
 import {
   FEED_EMPTY_MESSAGE,
+  FEED_EMPTY_TITLE,
   appendComment,
   applySocialCountsToFeed,
   applySocialCountsToPost,
   followButtonLabel,
+  kudosLabel,
+  navItems,
+  shouldShowFollowButton,
+  socialCountLabel,
 } from "../src/lib/social.ts";
 import type { FeedResponse, PostComment, PublicProfile, PublishedPost } from "../src/types.ts";
 
 assert.equal(followButtonLabel(profile(false)), "Follow");
 assert.equal(followButtonLabel(profile(true)), "Following");
-assert.equal(FEED_EMPTY_MESSAGE, "Follow players to see their story cards here.");
+assert.equal(shouldShowFollowButton(profile(false)), true);
+assert.equal(shouldShowFollowButton({ ...profile(false), viewer_is_self: true }), false);
+assert.equal(FEED_EMPTY_TITLE, "Your feed is empty.");
+assert.equal(FEED_EMPTY_MESSAGE, "Follow players to see their published chess story cards here.");
+assert.equal(kudosLabel(post("plain-post")), "Kudos");
+assert.equal(kudosLabel({ ...post("active-post"), viewer_has_kudos: true }), "Kudos");
+assert.equal(socialCountLabel(1, "comment"), "1 comment");
+assert.equal(socialCountLabel(2, "comment"), "2 comments");
+
+const nav = navItems("feed", { platform_username: "Clevermike02" });
+assert.deepEqual(nav.map((item) => item.label), ["Journal", "Profile", "Feed"]);
+assert.equal(nav.find((item) => item.label === "Profile")?.href, "/profile/Clevermike02");
+assert.equal(nav.find((item) => item.label === "Feed")?.active, true);
+assert.equal(navItems("post", { platform_username: "Clevermike02" }).find((item) => item.label === "Feed")?.active, true);
+assert.equal(navItems("journal", null).find((item) => item.label === "Profile")?.disabled, true);
 
 const feed: FeedResponse = {
   items: [post("followed-post"), post("other-post")],

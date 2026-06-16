@@ -7,6 +7,7 @@
     "dev": "vite --host 127.0.0.1",
     "build": "tsc && vite build",
     "preview": "vite preview --host 127.0.0.1",
+    "test": "npm run test:chess && npm run test:journal && npm run test:cards && npm run test:public && npm run test:social",
     "test:chess": "node --experimental-strip-types test/chess.test.ts",
     "test:journal": "node --experimental-strip-types test/journal.test.ts",
     "test:cards": "node --experimental-strip-types test/cardMetrics.test.ts",

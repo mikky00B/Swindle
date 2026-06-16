@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
 import { filterJournalGames } from "../src/lib/journal.ts";
 import type { JournalGame } from "../src/types.ts";
 
@@ -27,6 +28,34 @@ assert.deepEqual(
   filterJournalGames(games, "all", "french", new Set()).map((item) => item.id),
   ["two"],
 );
+
+const appSource = readFileSync(new URL("../src/App.tsx", import.meta.url), "utf8");
+const cssSource = readFileSync(new URL("../src/styles.css", import.meta.url), "utf8");
+
+assert.match(appSource, /className="journal-layout"/);
+assert.match(appSource, /className="control-panel journal-left"/);
+assert.match(appSource, /className="preview-panel journal-right"/);
+assert.match(appSource, /className="mobile-journal-preview"/);
+assert.match(appSource, /<details className="detail-panel">/);
+assert.match(appSource, /Analyze selected game/);
+assert.match(appSource, /Export PNG/);
+assert.match(appSource, /scrollIntoView\(\{ behavior: "smooth", block: "start" \}\)/);
+assert.match(appSource, /window\.matchMedia\("\(max-width: 768px\)"\)/);
+assert.match(cssSource, /\.journal-left\s*\{[^}]*overflow-y: auto;/s);
+assert.match(cssSource, /\.journal-right\s*\{[^}]*position: sticky;/s);
+assert.match(cssSource, /@media \(max-width: 900px\)[\s\S]*\.journal-right\s*\{[^}]*position: static;/);
+assert.match(cssSource, /@media \(max-width: 768px\)/);
+assert.match(cssSource, /@media \(max-width: 768px\)[\s\S]*\.journal-right\s*\{[^}]*display: none;/);
+assert.match(cssSource, /@media \(max-width: 768px\)[\s\S]*\.mobile-journal-preview\s*\{[^}]*display: grid;/);
+assert.match(cssSource, /\.mobile-action-grid\s*\{[^}]*grid-template-columns: repeat\(2, minmax\(0, 1fr\)\);/s);
+assert.match(cssSource, /\.responsive-card-stage\s*\{[^}]*height: calc\(1080px \* var\(--card-scale\)\);/s);
+
+const mobilePreviewIndex = appSource.indexOf("MobileJournalPreview");
+const suggestedIndex = appSource.indexOf("Suggested Stories");
+const journalIndex = appSource.indexOf("Full Journal");
+assert.ok(mobilePreviewIndex > -1);
+assert.ok(mobilePreviewIndex < suggestedIndex);
+assert.ok(mobilePreviewIndex < journalIndex);
 
 function game(id: string, result: string, opening: string, opponent: string): JournalGame {
   return {
