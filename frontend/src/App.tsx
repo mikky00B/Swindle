@@ -1,10 +1,13 @@
-import { useEffect, useRef, useState, type ReactNode } from "react";
+import { useEffect, useRef, useState, type FormEvent, type ReactNode } from "react";
 import { ShareCard } from "./components/cards/ShareCard";
 import { ChessBoard } from "./components/chess/ChessBoard";
 import {
+  addComment,
+  addKudos,
   analyzeJournalGame,
   createStoryFromPgn,
   disconnectLichess,
+  followProfile,
   getImportedGameShareCard,
   getJournalGameDebug,
   getJournalGameDetail,
@@ -14,12 +17,16 @@ import {
   ignoreSuggestedStory,
   importLatestLichessGames,
   connectLichessWithSession,
+  listComments,
+  listFeed,
   listJournalGames,
   listSuggestedStories,
   publishStoryCard,
   reprocessAllJournalGames,
   reprocessJournalGame,
+  removeKudos,
   resetIgnoredSuggestions,
+  unfollowProfile,
   unpublishStoryPost,
 } from "./lib/api";
 import { exportElementAsPng } from "./lib/exportImage";
@@ -35,8 +42,9 @@ import {
   isPublished,
   publishButtonLabel,
 } from "./lib/publicLinks";
+import { FEED_EMPTY_MESSAGE, appendComment, applySocialCountsToFeed, applySocialCountsToPost, followButtonLabel } from "./lib/social";
 import { SAMPLE_CARDS, SAMPLE_PGN } from "./mockData";
-import type { GameDebug, JournalGame, LichessStatus, PublicProfile, PublishedPost, ShareCardData } from "./types";
+import type { FeedResponse, GameDebug, JournalGame, LichessStatus, PostComment, PublicProfile, PublishedPost, ShareCardData } from "./types";
 
 export function App() {
   const route = currentRoute();
@@ -45,6 +53,9 @@ export function App() {
   }
   if (route.kind === "post") {
     return <PublicPostPage postId={route.postId} />;
+  }
+  if (route.kind === "feed") {
+    return <FeedPage />;
   }
 
   const [activeView, setActiveView] = useState<"journal" | "demo">("journal");
@@ -347,6 +358,18 @@ export function App() {
           >
             Journal
           </button>
+          {lichessStatus?.platform_username ? (
+            <a className="tab" href={profilePath(lichessStatus.platform_username)}>
+              Profile
+            </a>
+          ) : (
+            <button type="button" className="tab" disabled title="Connect Lichess to create a public profile">
+              Profile
+            </button>
+          )}
+          <a className="tab" href="/feed">
+            Feed
+          </a>
           <button
             type="button"
             className={activeView === "demo" ? "tab is-active" : "tab"}
@@ -860,16 +883,33 @@ function PublicProfilePage({ username }: { username: string }) {
   const [status, setStatus] = useState("Loading profile...");
 
   useEffect(() => {
-    void (async () => {
-      try {
-        const nextProfile = await getPublicProfile(username);
-        setProfile(nextProfile);
-        setStatus("Ready");
-      } catch (error) {
-        setStatus(error instanceof Error ? error.message : "Could not load profile");
-      }
-    })();
+    void loadProfile();
   }, [username]);
+
+  async function loadProfile() {
+    try {
+      const nextProfile = await getPublicProfile(username);
+      setProfile(nextProfile);
+      setStatus("Ready");
+    } catch (error) {
+      setStatus(error instanceof Error ? error.message : "Could not load profile");
+    }
+  }
+
+  async function handleFollowToggle() {
+    if (!profile) return;
+    setStatus(profile.viewer_is_following ? "Unfollowing..." : "Following...");
+    try {
+      if (profile.viewer_is_following) {
+        await unfollowProfile(username);
+      } else {
+        await followProfile(username);
+      }
+      await loadProfile();
+    } catch (error) {
+      setStatus(error instanceof Error ? error.message : "Could not update follow");
+    }
+  }
 
   if (!profile) {
     return <PublicShell title={username} status={status} />;
@@ -887,12 +927,25 @@ function PublicProfilePage({ username }: { username: string }) {
           <h1>{displayName}</h1>
           <span>Lichess: {profile.lichess_username ?? "Not connected"}</span>
         </div>
-        <button type="button" className="secondary" onClick={() => copyToClipboard(profileUrl)}>
-          Copy profile link
-        </button>
+        <div className="profile-actions">
+          {!profile.viewer_is_self ? (
+            <button
+              type="button"
+              className={profile.viewer_is_following ? "secondary" : ""}
+              onClick={handleFollowToggle}
+            >
+              {followButtonLabel(profile)}
+            </button>
+          ) : null}
+          <button type="button" className="secondary" onClick={() => copyToClipboard(profileUrl)}>
+            Copy profile link
+          </button>
+        </div>
       </section>
       <section className="profile-stats" aria-label="Profile stats">
         <Stat label="Published cards" value={profile.published_cards_count} />
+        <Stat label="Followers" value={profile.followers_count} />
+        <Stat label="Following" value={profile.following_count} />
         <Stat label="Wins shown" value={profile.wins_shown} />
         <Stat label="Losses shown" value={profile.losses_shown} />
         <Stat label="Common story" value={storyLabel(profile.common_story)} />
@@ -912,21 +965,94 @@ function PublicProfilePage({ username }: { username: string }) {
   );
 }
 
+function FeedPage() {
+  const [feed, setFeed] = useState<FeedResponse | null>(null);
+  const [status, setStatus] = useState("Loading feed...");
+
+  useEffect(() => {
+    void load();
+  }, []);
+
+  async function load() {
+    try {
+      const nextFeed = await listFeed();
+      setFeed(nextFeed);
+      setStatus("Ready");
+    } catch (error) {
+      setStatus(error instanceof Error ? error.message : "Could not load feed");
+    }
+  }
+
+  async function handleKudos(post: PublishedPost) {
+    try {
+      const counts = post.viewer_has_kudos ? await removeKudos(post.id) : await addKudos(post.id);
+      setFeed((current) => applySocialCountsToFeed(current, post.id, counts));
+    } catch (error) {
+      setStatus(error instanceof Error ? error.message : "Could not update kudos");
+    }
+  }
+
+  return (
+    <PublicShell title="Feed" status={status}>
+      <section className="feed-page" aria-label="Feed">
+        {!feed ? (
+          <p className="empty-state">Loading feed...</p>
+        ) : feed.items.length === 0 ? (
+          <div className="empty-state profile-empty">
+            <strong>{FEED_EMPTY_MESSAGE}</strong>
+            <span>Published public cards from followed profiles will appear in this feed.</span>
+          </div>
+        ) : (
+          feed.items.map((post) => <FeedPostCard key={post.id} post={post} onKudos={() => handleKudos(post)} />)
+        )}
+      </section>
+    </PublicShell>
+  );
+}
+
 function PublicPostPage({ postId }: { postId: string }) {
   const [post, setPost] = useState<PublishedPost | null>(null);
+  const [comments, setComments] = useState<PostComment[]>([]);
+  const [commentBody, setCommentBody] = useState("");
   const [status, setStatus] = useState("Loading post...");
 
   useEffect(() => {
     void (async () => {
       try {
-        const nextPost = await getPublicPost(postId);
+        const [nextPost, nextComments] = await Promise.all([getPublicPost(postId), listComments(postId)]);
         setPost(nextPost);
+        setComments(nextComments);
         setStatus("Ready");
       } catch (error) {
         setStatus(error instanceof Error ? error.message : "Could not load post");
       }
     })();
   }, [postId]);
+
+  async function handleKudos() {
+    if (!post) return;
+    try {
+      const counts = post.viewer_has_kudos ? await removeKudos(post.id) : await addKudos(post.id);
+      setPost(applySocialCountsToPost(post, counts));
+    } catch (error) {
+      setStatus(error instanceof Error ? error.message : "Could not update kudos");
+    }
+  }
+
+  async function handleCommentSubmit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (!post) return;
+    setStatus("Posting comment...");
+    try {
+      const comment = await addComment(post.id, commentBody);
+      setComments((current) => appendComment(current, comment));
+      setPost({ ...post, comments_count: post.comments_count + 1 });
+      setCommentBody("");
+      setStatus("Comment posted");
+    } catch (error) {
+      setStatus(error instanceof Error ? error.message : "Could not post comment");
+    }
+  }
 
   if (!post) {
     return <PublicShell title="Story card" status={status} />;
@@ -948,6 +1074,7 @@ function PublicPostPage({ postId }: { postId: string }) {
           </span>
           <h1>{post.headline}</h1>
           <p className="public-byline">{displayName}</p>
+          <SocialActions post={post} onKudos={handleKudos} />
           <dl>
             <div>
               <dt>Result</dt>
@@ -979,9 +1106,75 @@ function PublicPostPage({ postId }: { postId: string }) {
               </a>
             ) : null}
           </div>
+          <section className="comments-panel" aria-label="Comments">
+            <h2>Comments</h2>
+            {comments.length === 0 ? (
+              <p className="empty-state">No comments yet.</p>
+            ) : (
+              <div className="comment-list">
+                {comments.map((comment) => (
+                  <article className="comment-item" key={comment.id}>
+                    <strong>{profileDisplayName(comment.author)}</strong>
+                    <p>{comment.body}</p>
+                  </article>
+                ))}
+              </div>
+            )}
+            <form className="comment-form" onSubmit={handleCommentSubmit}>
+              <label>
+                Add comment
+                <textarea value={commentBody} onChange={(event) => setCommentBody(event.target.value)} />
+              </label>
+              <button type="submit" disabled={!commentBody.trim()}>
+                Submit
+              </button>
+            </form>
+          </section>
         </aside>
       </section>
     </PublicShell>
+  );
+}
+
+function FeedPostCard({ post, onKudos }: { post: PublishedPost; onKudos: () => void }) {
+  const profileUsername = profileSlugForPost(post);
+  return (
+    <article className="feed-card">
+      <div className="feed-card-main">
+        {post.story?.key_position_fen ? (
+          <a className="feed-card-board" href={postPath(post.id)} aria-label={`Open post: ${post.headline}`}>
+            <ChessBoard fen={post.story.key_position_fen} />
+          </a>
+        ) : null}
+        <div className="feed-card-copy">
+          <p>
+            <a href={profilePath(profileUsername)}>{profileDisplayName(post)}</a>
+            <span>{post.game?.opening_name ?? "Unknown opening"}</span>
+          </p>
+          <span className="story-chip">
+            {post.story?.badge_label} {post.story?.badge_emoji}
+          </span>
+          <h2>
+            <a href={postPath(post.id)}>{post.headline}</a>
+          </h2>
+          <dl className="story-facts">
+            <div>
+              <dt>Result</dt>
+              <dd>{post.game?.result ?? "Unknown"}</dd>
+            </div>
+            <div>
+              <dt>Moves</dt>
+              <dd>{post.game?.moves_count ?? 0}</dd>
+            </div>
+            <div>
+              <dt>Eval swing</dt>
+              <dd>{formatMaybeEval(post.metrics?.biggest_eval_swing)}</dd>
+            </div>
+          </dl>
+        </div>
+      </div>
+      <SocialActions post={post} onKudos={onKudos} />
+    </article>
   );
 }
 
@@ -1019,10 +1212,23 @@ function ProfilePostCard({ post }: { post: PublishedPost }) {
           <dd>{post.game?.moves_count ?? 0}</dd>
         </div>
       </dl>
+      <span className="post-social-line">{post.kudos_count} kudos · {post.comments_count} comments</span>
       <span className="view-card-action">View card</span>
     </a>
   );
 }
+
+function SocialActions({ post, onKudos }: { post: Pick<PublishedPost, "kudos_count" | "comments_count" | "viewer_has_kudos">; onKudos: () => void }) {
+  return (
+    <div className="social-actions">
+      <button type="button" className={post.viewer_has_kudos ? "is-active" : "secondary"} onClick={onKudos}>
+        Kudos {post.kudos_count}
+      </button>
+      <span>{post.comments_count} comment{post.comments_count === 1 ? "" : "s"}</span>
+    </div>
+  );
+}
+
 
 function PublicShell({ title, status, children }: { title: string; status: string; children?: ReactNode }) {
   return (
@@ -1032,9 +1238,14 @@ function PublicShell({ title, status, children }: { title: string; status: strin
           <p>Swindle V1</p>
           <h1>{title}</h1>
         </div>
-        <a className="button-link" href="/">
-          Journal
-        </a>
+        <div className="view-tabs">
+          <a className="tab" href="/">
+            Journal
+          </a>
+          <a className="tab" href="/feed">
+            Feed
+          </a>
+        </div>
       </nav>
       {children}
       <p className="status">{status}</p>
@@ -1053,9 +1264,13 @@ function Stat({ label, value }: { label: string; value: string | number }) {
 
 function currentRoute():
   | { kind: "journal" }
+  | { kind: "feed" }
   | { kind: "profile"; username: string }
   | { kind: "post"; postId: string } {
   const path = window.location.pathname;
+  if (path === "/feed") {
+    return { kind: "feed" };
+  }
   if (path.startsWith("/profile/")) {
     return { kind: "profile", username: decodeURIComponent(path.replace("/profile/", "")) };
   }

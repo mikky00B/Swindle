@@ -147,6 +147,9 @@ export type PublishedPost = PublishedPostSummary & {
   display_name: string;
   profile_slug: string;
   lichess_username?: string | null;
+  kudos_count: number;
+  comments_count: number;
+  viewer_has_kudos: boolean;
   game?: {
     id: string;
     external_game_id: string;
@@ -168,6 +171,15 @@ export type PublishedPost = PublishedPostSummary & {
     interesting_score: number;
     key_position_fen?: string | null;
   } | null;
+  metrics?: {
+    accuracy?: number | null;
+    lowest_eval?: number | null;
+    highest_eval?: number | null;
+    biggest_eval_swing?: number | null;
+    turning_point_move?: number | null;
+    analysis_source?: string | null;
+    analysis_status?: string | null;
+  } | null;
   share_card?: ShareCardData;
 };
 
@@ -176,9 +188,40 @@ export type PublicProfile = {
   profile_slug: string;
   lichess_username?: string | null;
   published_cards_count: number;
+  followers_count: number;
+  following_count: number;
+  viewer_is_self: boolean;
+  viewer_is_following: boolean;
   wins_shown: number;
   losses_shown: number;
   common_story?: string | null;
   games_imported?: number;
   posts: PublishedPost[];
+};
+
+export type FeedResponse = {
+  items: PublishedPost[];
+  limit: number;
+  offset: number;
+  total: number;
+};
+
+export type SocialCounts = {
+  kudos_count: number;
+  comments_count: number;
+  viewer_has_kudos: boolean;
+};
+
+export type CommentAuthor = {
+  display_name: string;
+  profile_slug: string;
+  lichess_username?: string | null;
+};
+
+export type PostComment = {
+  id: string;
+  post_id: string;
+  body: string;
+  created_at?: string | null;
+  author: CommentAuthor;
 };

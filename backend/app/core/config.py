@@ -13,6 +13,7 @@ class Settings(BaseSettings):
     app_env: str = Field(default="development", alias="APP_ENV")
     api_v1_prefix: str = "/api/v1"
     frontend_origin: str = Field(default="http://localhost:5173", alias="FRONTEND_ORIGIN")
+    cors_allowed_origins: str = Field(default="", alias="CORS_ALLOWED_ORIGINS")
     lichess_client_id: str = Field(default="swindle-local", alias="LICHESS_CLIENT_ID")
     lichess_redirect_uri: str = Field(
         default="http://localhost:8000/api/v1/integrations/lichess/callback",
@@ -26,6 +27,12 @@ class Settings(BaseSettings):
     database_url: str = Field(default="postgresql+psycopg://swindle:swindle@localhost:5432/swindle", alias="DATABASE_URL")
 
     model_config = SettingsConfigDict(env_file=(ROOT_DIR / ".env", ROOT_DIR / "backend" / ".env"), extra="ignore")
+
+    @property
+    def allowed_origins(self) -> list[str]:
+        origins = {self.frontend_origin, "http://localhost:5173", "http://127.0.0.1:5173"}
+        origins.update(origin.strip() for origin in self.cors_allowed_origins.split(",") if origin.strip())
+        return sorted(origins)
 
 
 @lru_cache
