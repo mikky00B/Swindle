@@ -52,7 +52,7 @@ export async function createStoryFromPgn(pgn: string, username: string): Promise
 }
 
 export function lichessConnectUrl(): string {
-  return `${API_BASE}/integrations/lichess/connect`;
+  return `${API_BASE}/integrations/lichess/connect?session_id=${encodeURIComponent(getSessionId())}`;
 }
 
 export async function getLichessStatus(): Promise<LichessStatus> {
