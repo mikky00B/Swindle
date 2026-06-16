@@ -392,6 +392,7 @@ def _game_summary(game: Game | None) -> dict[str, Any] | None:
         "speed": game.speed,
         "time_control": game.time_control,
         "played_at": _iso(game.played_at),
+        "final_fen": game.final_fen,
     }
 
 

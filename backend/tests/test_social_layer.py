@@ -59,6 +59,7 @@ def test_feed_returns_posts_from_followed_users_only() -> None:
     assert response.status_code == 200
     assert [post["id"] for post in response.json()["items"]] == [followed_post]
     assert response.json()["items"][0]["display_name"] == "followed"
+    assert response.json()["items"][0]["game"]["final_fen"] == "8/8/8/8/8/8/8/8 w - - 0 1"
 
 
 def test_feed_pagination_still_works() -> None:
@@ -186,6 +187,7 @@ def create_public_post(username: str, external_id: str, *, visibility: str = "pu
             raw_payload={},
             result="win",
             moves_count=1,
+            final_fen="8/8/8/8/8/8/8/8 w - - 0 1",
             imported_at=now,
             created_at=now,
             updated_at=now,
