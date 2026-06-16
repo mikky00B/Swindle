@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, type FormEvent, type ReactNode } from "react";
+import { useEffect, useRef, useState, type CSSProperties, type FormEvent, type ReactNode, type RefObject } from "react";
 import { ShareCard } from "./components/cards/ShareCard";
 import { ChessBoard } from "./components/chess/ChessBoard";
 import {
@@ -42,7 +42,18 @@ import {
   isPublished,
   publishButtonLabel,
 } from "./lib/publicLinks";
-import { FEED_EMPTY_MESSAGE, appendComment, applySocialCountsToFeed, applySocialCountsToPost, followButtonLabel } from "./lib/social";
+import {
+  FEED_EMPTY_MESSAGE,
+  FEED_EMPTY_TITLE,
+  appendComment,
+  applySocialCountsToFeed,
+  applySocialCountsToPost,
+  followButtonLabel,
+  kudosLabel,
+  navItems,
+  shouldShowFollowButton,
+  socialCountLabel,
+} from "./lib/social";
 import { SAMPLE_CARDS, SAMPLE_PGN } from "./mockData";
 import type { FeedResponse, GameDebug, JournalGame, LichessStatus, PostComment, PublicProfile, PublishedPost, ShareCardData } from "./types";
 
@@ -69,10 +80,11 @@ export function App() {
   const [selectedCard, setSelectedCard] = useState<ShareCardData | null>(null);
   const [selectedDebug, setSelectedDebug] = useState<GameDebug | null>(null);
   const [status, setStatus] = useState("Ready");
-  const [showDebug, setShowDebug] = useState(import.meta.env.DEV);
+  const [showDebug, setShowDebug] = useState(false);
   const [journalFilter, setJournalFilter] = useState<JournalFilter>("all");
   const [journalSearch, setJournalSearch] = useState("");
   const cardRef = useRef<HTMLElement | null>(null);
+  const mobilePreviewRef = useRef<HTMLElement>(null);
 
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
@@ -159,8 +171,11 @@ export function App() {
   }
 
   async function handleSelectGame(gameId: string) {
-    // Auto-load card when selecting game
+    setStatus("Loading story card...");
     await loadGameAndCard(gameId);
+    if (window.matchMedia("(max-width: 768px)").matches) {
+      mobilePreviewRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+    }
   }
 
   async function handleImport() {
@@ -345,31 +360,8 @@ export function App() {
 
   return (
     <main className="app-shell">
-      <nav className="top-nav">
-        <div>
-          <p>Swindle V1</p>
-          <h1>Lichess story cards</h1>
-        </div>
-        <div className="view-tabs">
-          <button
-            type="button"
-            className={activeView === "journal" ? "tab is-active" : "tab"}
-            onClick={() => setActiveView("journal")}
-          >
-            Journal
-          </button>
-          {lichessStatus?.platform_username ? (
-            <a className="tab" href={profilePath(lichessStatus.platform_username)}>
-              Profile
-            </a>
-          ) : (
-            <button type="button" className="tab" disabled title="Connect Lichess to create a public profile">
-              Profile
-            </button>
-          )}
-          <a className="tab" href="/feed">
-            Feed
-          </a>
+      <TopNav title="Lichess story cards" activePage="journal" lichessStatus={lichessStatus}>
+        {import.meta.env.DEV ? (
           <button
             type="button"
             className={activeView === "demo" ? "tab is-active" : "tab"}
@@ -377,17 +369,20 @@ export function App() {
           >
             PGN demo
           </button>
-        </div>
-      </nav>
-      <section className="workspace">
-        <div className="control-panel">
+        ) : null}
+      </TopNav>
+      <section className="journal-layout">
+        <div className="control-panel journal-left">
           {activeView === "journal" ? (
             <JournalControls
               lichessStatus={lichessStatus}
               journal={journal}
               suggestedStories={suggestedStories}
               selectedGame={selectedGame}
+              selectedCard={selectedCard}
               selectedDebug={selectedDebug}
+              status={status}
+              mobilePreviewRef={mobilePreviewRef}
               journalFilter={journalFilter}
               journalSearch={journalSearch}
               showDebug={showDebug}
@@ -399,10 +394,11 @@ export function App() {
               onIgnoreSuggestion={handleIgnoreSuggestion}
               onResetIgnoredSuggestions={handleResetIgnoredSuggestions}
               onReprocessGame={handleReprocessGame}
+              onReprocessAllGames={handleReprocessAllGames}
               onAnalyzeGame={handleAnalyzeGame}
+              onExport={handleExport}
               onPublishSelectedGame={handlePublishSelectedGame}
               onUnpublishSelectedGame={handleUnpublishSelectedGame}
-              onReprocessAllGames={handleReprocessAllGames}
               onRefresh={refreshLichessState}
               onSelectGame={handleSelectGame}
             />
@@ -420,35 +416,69 @@ export function App() {
               }}
             />
           )}
-          {activeView === "journal" ? (
-            <div className="actions">
-              <button type="button" className="secondary" onClick={handleExport}>
-                Export PNG
-              </button>
-            </div>
-          ) : null}
-          <p className="status">{status}</p>
+          {status !== "Ready" ? <p className="status">{status}</p> : null}
         </div>
 
-        <div className="preview-panel">
-          <div className="preview-frame">
-            <div className="preview-scale">
-              <ShareCard card={activeView === "journal" && selectedCard ? selectedCard : card} />
-            </div>
-          </div>
-          {activeView === "journal" && import.meta.env.DEV ? (
-            <div className="preview-dev-tools">
-              <button
-                type="button"
-                className="secondary"
-                onClick={() => selectedGame && handleAnalyzeGame(selectedGame.id)}
-                disabled={!selectedGame}
-              >
-                Analyze selected game
-              </button>
-              <p>{evalDebugLine(selectedCard)}</p>
-            </div>
-          ) : null}
+        <div className="preview-panel journal-right">
+          {activeView === "journal" ? (
+            <>
+              <div className="preview-frame">
+                {selectedCard ? (
+                  <div className="preview-scale">
+                    <ShareCard card={selectedCard} />
+                  </div>
+                ) : (
+                  <p className="preview-placeholder">Select a game to preview its story card.</p>
+                )}
+              </div>
+              <div className="preview-actions">
+                <button
+                  type="button"
+                  className="secondary"
+                  onClick={() => selectedGame && handleAnalyzeGame(selectedGame.id)}
+                  disabled={!selectedGame}
+                >
+                  Analyze selected game
+                </button>
+                <button type="button" className="secondary" onClick={handleExport} disabled={!selectedCard}>
+                  Export PNG
+                </button>
+                {selectedGame ? (
+                  <>
+                    <PublicCardActions
+                      selectedGame={selectedGame}
+                      lichessUsername={lichessStatus?.platform_username}
+                      onPublish={handlePublishSelectedGame}
+                      onUnpublish={handleUnpublishSelectedGame}
+                    />
+                    {lichessUrl(selectedGame.external_game_id) ? (
+                      <a className="button-link" href={lichessUrl(selectedGame.external_game_id)} target="_blank" rel="noreferrer">
+                        Open on Lichess
+                      </a>
+                    ) : null}
+                  </>
+                ) : null}
+                <p>
+                  {status === "Loading story card..." || status.startsWith("Analyzing")
+                    ? status
+                    : analysisStatusMessage(selectedCard)}
+                </p>
+              </div>
+            </>
+          ) : (
+            <>
+              <div className="preview-frame">
+                <div className="preview-scale">
+                  <ShareCard card={card} />
+                </div>
+              </div>
+              <div className="preview-actions">
+                <button type="button" className="secondary" onClick={handleExport}>
+                  Export PNG
+                </button>
+              </div>
+            </>
+          )}
           <div className="export-stage" aria-hidden="true">
             <article ref={cardRef}>
               <ShareCard card={getCardForExport()} showDevDebug={false} />
@@ -465,7 +495,10 @@ type JournalControlsProps = {
   journal: JournalGame[];
   suggestedStories: JournalGame[];
   selectedGame: JournalGame | null;
+  selectedCard: ShareCardData | null;
   selectedDebug: GameDebug | null;
+  status: string;
+  mobilePreviewRef: RefObject<HTMLElement>;
   journalFilter: JournalFilter;
   journalSearch: string;
   showDebug: boolean;
@@ -477,10 +510,11 @@ type JournalControlsProps = {
   onIgnoreSuggestion: (storyId: string) => void;
   onResetIgnoredSuggestions: () => void;
   onReprocessGame: (gameId: string) => void;
+  onReprocessAllGames: () => void;
   onAnalyzeGame: (gameId: string) => void;
+  onExport: () => void;
   onPublishSelectedGame: () => void;
   onUnpublishSelectedGame: () => void;
-  onReprocessAllGames: () => void;
   onRefresh: () => void;
   onSelectGame: (gameId: string) => void;
 };
@@ -500,7 +534,10 @@ function JournalControls({
   journal,
   suggestedStories,
   selectedGame,
+  selectedCard,
   selectedDebug,
+  status,
+  mobilePreviewRef,
   journalFilter,
   journalSearch,
   showDebug,
@@ -512,10 +549,11 @@ function JournalControls({
   onIgnoreSuggestion,
   onResetIgnoredSuggestions,
   onReprocessGame,
+  onReprocessAllGames,
   onAnalyzeGame,
+  onExport,
   onPublishSelectedGame,
   onUnpublishSelectedGame,
-  onReprocessAllGames,
   onRefresh,
   onSelectGame,
 }: JournalControlsProps) {
@@ -525,7 +563,7 @@ function JournalControls({
   return (
     <>
       <div className="panel-heading">
-        <p>Milestone 3</p>
+        <p>Lichess story cards</p>
         <h1>Private chess journal</h1>
       </div>
 
@@ -561,6 +599,17 @@ function JournalControls({
           Refresh
         </button>
       </div>
+
+      <MobileJournalPreview
+        selectedGame={selectedGame}
+        selectedCard={selectedCard}
+        status={status}
+        previewRef={mobilePreviewRef}
+        onAnalyze={onAnalyzeGame}
+        onExport={onExport}
+        onPublish={onPublishSelectedGame}
+        onUnpublish={onUnpublishSelectedGame}
+      />
 
       <section className="suggested-section" aria-label="Suggested Stories">
         <div className="section-heading">
@@ -670,7 +719,7 @@ function JournalControls({
 
       <div className="journal-list">
         {journal.length === 0 ? (
-          <p className="empty-state">Connect Lichess and import your latest games to start building your chess journal.</p>
+          <p className="empty-state">No games imported yet. Connect Lichess and import your latest games.</p>
         ) : filteredJournal.length === 0 ? (
           <p className="empty-state">No games match this journal filter.</p>
         ) : (
@@ -681,11 +730,10 @@ function JournalControls({
               key={game.id} 
               onClick={() => onSelectGame(game.id)}
             >
-              <span>
-                {game.result.toUpperCase()} / {game.moves_count} moves
-              </span>
+              <span>{game.result.toUpperCase()} / {game.moves_count} moves / {game.processing_status}</span>
               <strong>{game.story.badge_label}</strong>
               <em>{game.opening_name ?? "Unknown opening"}</em>
+              <small>{game.opponent_username ?? "Unknown opponent"}</small>
               {selectedGame?.id === game.id && <span className="selected-indicator">✓</span>}
             </button>
           ))
@@ -694,11 +742,11 @@ function JournalControls({
       </section>
 
       {selectedGame ? (
-        <div className="detail-panel">
-          <div className="panel-heading compact">
-            <p>Game detail</p>
-            <h1>{selectedGame.story.badge_label}</h1>
-          </div>
+        <details className="detail-panel">
+          <summary>
+            <span>Game details</span>
+            <strong>{selectedGame.story.badge_label}</strong>
+          </summary>
           <dl>
             <div>
               <dt>Opponent</dt>
@@ -753,28 +801,7 @@ function JournalControls({
               <dd>{selectedGame.metrics?.turning_point_move ?? "None"}</dd>
             </div>
           </dl>
-          <div className="actions">
-            <button type="button" className="secondary" onClick={() => onReprocessGame(selectedGame.id)}>
-              Reprocess story
-            </button>
-            {import.meta.env.DEV ? (
-              <button type="button" className="secondary" onClick={() => onAnalyzeGame(selectedGame.id)}>
-                Analyze with cloud eval
-              </button>
-            ) : null}
-            {lichessUrl(selectedGame.external_game_id) ? (
-              <a className="button-link" href={lichessUrl(selectedGame.external_game_id)} target="_blank" rel="noreferrer">
-                Open on Lichess
-              </a>
-            ) : null}
-          </div>
-          <PublicCardActions
-            selectedGame={selectedGame}
-            lichessUsername={lichessStatus?.platform_username}
-            onPublish={onPublishSelectedGame}
-            onUnpublish={onUnpublishSelectedGame}
-          />
-        </div>
+        </details>
       ) : null}
 
       {import.meta.env.DEV && (
@@ -786,12 +813,21 @@ function JournalControls({
       )}
 
       {import.meta.env.DEV && showDebug && (
-        <>
+        <details className="debug-panel" open>
+          <summary>
+            <span>Debug tools</span>
+            <strong>Development only</strong>
+          </summary>
           <button type="button" className="secondary" onClick={onReprocessAllGames}>
             Reprocess all
           </button>
+          {selectedGame ? (
+            <button type="button" className="secondary" onClick={() => onReprocessGame(selectedGame.id)}>
+              Reprocess selected story
+            </button>
+          ) : null}
           {selectedDebug ? (
-            <div className="debug-panel">
+            <div className="debug-audit">
               <div className="panel-heading compact">
                 <p>Debug</p>
                 <h1>Board audit</h1>
@@ -813,9 +849,120 @@ function JournalControls({
               </dl>
             </div>
           ) : null}
-        </>
+        </details>
       )}
     </>
+  );
+}
+
+function MobileJournalPreview({
+  selectedGame,
+  selectedCard,
+  status,
+  previewRef,
+  onAnalyze,
+  onExport,
+  onPublish,
+  onUnpublish,
+}: {
+  selectedGame: JournalGame | null;
+  selectedCard: ShareCardData | null;
+  status: string;
+  previewRef: RefObject<HTMLElement>;
+  onAnalyze: (gameId: string) => void;
+  onExport: () => void;
+  onPublish: () => void;
+  onUnpublish: () => void;
+}) {
+  const publishedPost = selectedGame?.published_post;
+  const published = isPublished(publishedPost);
+
+  return (
+    <section className="mobile-journal-preview" ref={previewRef} aria-label="Selected card preview">
+      {selectedCard ? (
+        <ResponsiveShareCard card={selectedCard} />
+      ) : (
+        <div className="mobile-card-empty">Select a game to preview its story card.</div>
+      )}
+      <div className="mobile-action-grid">
+        {published && publishedPost ? (
+          <>
+            <a className="button-link" href={postPath(publishedPost.id)}>
+              View post
+            </a>
+            <button type="button" className="secondary" onClick={onUnpublish}>
+              Unpublish
+            </button>
+            <button type="button" className="secondary" onClick={onExport} disabled={!selectedCard}>
+              Export PNG
+            </button>
+            {selectedGame && lichessUrl(selectedGame.external_game_id) ? (
+              <a className="button-link secondary-link" href={lichessUrl(selectedGame.external_game_id)} target="_blank" rel="noreferrer">
+                Open on Lichess
+              </a>
+            ) : (
+              <button type="button" className="secondary" disabled>
+                Open on Lichess
+              </button>
+            )}
+          </>
+        ) : (
+          <>
+            <button
+              type="button"
+              className="secondary"
+              onClick={() => selectedGame && onAnalyze(selectedGame.id)}
+              disabled={!selectedGame}
+            >
+              Analyze
+            </button>
+            <button type="button" className="secondary" onClick={onExport} disabled={!selectedCard}>
+              Export PNG
+            </button>
+            <button type="button" onClick={onPublish} disabled={!selectedGame?.story.id}>
+              Publish
+            </button>
+            {selectedGame && lichessUrl(selectedGame.external_game_id) ? (
+              <a className="button-link secondary-link" href={lichessUrl(selectedGame.external_game_id)} target="_blank" rel="noreferrer">
+                Open on Lichess
+              </a>
+            ) : (
+              <button type="button" className="secondary" disabled>
+                Open on Lichess
+              </button>
+            )}
+          </>
+        )}
+      </div>
+      <p className="mobile-card-status">
+        {status === "Loading story card..." || status.startsWith("Analyzing") ? status : analysisStatusMessage(selectedCard)}
+      </p>
+    </section>
+  );
+}
+
+function ResponsiveShareCard({ card }: { card: ShareCardData }) {
+  const containerRef = useRef<HTMLDivElement | null>(null);
+  const [scale, setScale] = useState(0.32);
+
+  useEffect(() => {
+    const element = containerRef.current;
+    if (!element) return;
+    const updateScale = () => {
+      setScale(Math.min(1, element.clientWidth / 1080));
+    };
+    updateScale();
+    const observer = new ResizeObserver(updateScale);
+    observer.observe(element);
+    return () => observer.disconnect();
+  }, []);
+
+  return (
+    <div className="responsive-card-preview" ref={containerRef}>
+      <div className="responsive-card-stage" style={{ "--card-scale": scale } as CSSProperties}>
+        <ShareCard card={card} />
+      </div>
+    </div>
   );
 }
 
@@ -920,7 +1067,7 @@ function PublicProfilePage({ username }: { username: string }) {
   const profileUrl = absoluteUrl(window.location.origin, profilePath(profileSlug));
 
   return (
-    <PublicShell title={displayName} status={status}>
+    <PublicShell title={displayName} status={status} activePage="profile" profileSlug={profileSlug}>
       <section className="profile-header">
         <div>
           <p>Public profile</p>
@@ -928,7 +1075,7 @@ function PublicProfilePage({ username }: { username: string }) {
           <span>Lichess: {profile.lichess_username ?? "Not connected"}</span>
         </div>
         <div className="profile-actions">
-          {!profile.viewer_is_self ? (
+          {shouldShowFollowButton(profile) ? (
             <button
               type="button"
               className={profile.viewer_is_following ? "secondary" : ""}
@@ -936,7 +1083,11 @@ function PublicProfilePage({ username }: { username: string }) {
             >
               {followButtonLabel(profile)}
             </button>
-          ) : null}
+          ) : (
+            <button type="button" className="secondary" disabled>
+              Your profile
+            </button>
+          )}
           <button type="button" className="secondary" onClick={() => copyToClipboard(profileUrl)}>
             Copy profile link
           </button>
@@ -967,6 +1118,7 @@ function PublicProfilePage({ username }: { username: string }) {
 
 function FeedPage() {
   const [feed, setFeed] = useState<FeedResponse | null>(null);
+  const [profileSlug, setProfileSlug] = useState<string | null>(null);
   const [status, setStatus] = useState("Loading feed...");
 
   useEffect(() => {
@@ -975,8 +1127,9 @@ function FeedPage() {
 
   async function load() {
     try {
-      const nextFeed = await listFeed();
+      const [nextFeed, nextStatus] = await Promise.all([listFeed(), getLichessStatus().catch(() => null)]);
       setFeed(nextFeed);
+      setProfileSlug(nextStatus?.platform_username ?? null);
       setStatus("Ready");
     } catch (error) {
       setStatus(error instanceof Error ? error.message : "Could not load feed");
@@ -993,14 +1146,22 @@ function FeedPage() {
   }
 
   return (
-    <PublicShell title="Feed" status={status}>
+    <PublicShell title="Feed" status={status} activePage="feed">
       <section className="feed-page" aria-label="Feed">
         {!feed ? (
           <p className="empty-state">Loading feed...</p>
         ) : feed.items.length === 0 ? (
           <div className="empty-state profile-empty">
-            <strong>{FEED_EMPTY_MESSAGE}</strong>
-            <span>Published public cards from followed profiles will appear in this feed.</span>
+            <strong>{FEED_EMPTY_TITLE}</strong>
+            <span>{FEED_EMPTY_MESSAGE}</span>
+            <div className="empty-actions">
+              <a className="button-link" href="/">
+                Go to journal
+              </a>
+              <a className="button-link secondary-link" href={profileSlug ? profilePath(profileSlug) : "/"}>
+                Go to your profile
+              </a>
+            </div>
           </div>
         ) : (
           feed.items.map((post) => <FeedPostCard key={post.id} post={post} onKudos={() => handleKudos(post)} />)
@@ -1063,7 +1224,7 @@ function PublicPostPage({ postId }: { postId: string }) {
   const currentPostUrl = absoluteUrl(window.location.origin, postPath(post.id));
 
   return (
-    <PublicShell title={post.headline} status={status}>
+    <PublicShell title={post.headline} status={status} activePage="post">
       <section className="public-post-page">
         <div className="public-card-frame">
           {post.share_card ? <ShareCard card={post.share_card} /> : <p className="empty-state">Share card unavailable.</p>}
@@ -1095,7 +1256,10 @@ function PublicPostPage({ postId }: { postId: string }) {
           </dl>
           <div className="actions">
             <a className="button-link" href={profilePath(profileUsername)}>
-              Back to profile
+              View profile
+            </a>
+            <a className="button-link secondary-link" href="/feed">
+              Feed
             </a>
             <button type="button" className="secondary" onClick={() => copyToClipboard(currentPostUrl)}>
               Copy post link
@@ -1107,7 +1271,10 @@ function PublicPostPage({ postId }: { postId: string }) {
             ) : null}
           </div>
           <section className="comments-panel" aria-label="Comments">
-            <h2>Comments</h2>
+            <div className="comments-heading">
+              <h2>Comments</h2>
+              <span>{socialCountLabel(comments.length, "comment")}</span>
+            </div>
             {comments.length === 0 ? (
               <p className="empty-state">No comments yet.</p>
             ) : (
@@ -1123,7 +1290,11 @@ function PublicPostPage({ postId }: { postId: string }) {
             <form className="comment-form" onSubmit={handleCommentSubmit}>
               <label>
                 Add comment
-                <textarea value={commentBody} onChange={(event) => setCommentBody(event.target.value)} />
+                <textarea
+                  value={commentBody}
+                  placeholder="Add a comment..."
+                  onChange={(event) => setCommentBody(event.target.value)}
+                />
               </label>
               <button type="submit" disabled={!commentBody.trim()}>
                 Submit
@@ -1138,11 +1309,12 @@ function PublicPostPage({ postId }: { postId: string }) {
 
 function FeedPostCard({ post, onKudos }: { post: PublishedPost; onKudos: () => void }) {
   const profileUsername = profileSlugForPost(post);
+  const postHref = postPath(post.id);
   return (
     <article className="feed-card">
       <div className="feed-card-main">
         {post.story?.key_position_fen ? (
-          <a className="feed-card-board" href={postPath(post.id)} aria-label={`Open post: ${post.headline}`}>
+          <a className="feed-card-board" href={postHref} aria-label={`Open post: ${post.headline}`}>
             <ChessBoard fen={post.story.key_position_fen} />
           </a>
         ) : null}
@@ -1155,7 +1327,7 @@ function FeedPostCard({ post, onKudos }: { post: PublishedPost; onKudos: () => v
             {post.story?.badge_label} {post.story?.badge_emoji}
           </span>
           <h2>
-            <a href={postPath(post.id)}>{post.headline}</a>
+            <a href={postHref}>{post.headline}</a>
           </h2>
           <dl className="story-facts">
             <div>
@@ -1173,7 +1345,12 @@ function FeedPostCard({ post, onKudos }: { post: PublishedPost; onKudos: () => v
           </dl>
         </div>
       </div>
-      <SocialActions post={post} onKudos={onKudos} />
+      <div className="feed-card-footer">
+        <SocialActions post={post} onKudos={onKudos} postHref={postHref} />
+        <a className="view-card-action" href={postHref}>
+          View card
+        </a>
+      </div>
     </article>
   );
 }
@@ -1218,38 +1395,100 @@ function ProfilePostCard({ post }: { post: PublishedPost }) {
   );
 }
 
-function SocialActions({ post, onKudos }: { post: Pick<PublishedPost, "kudos_count" | "comments_count" | "viewer_has_kudos">; onKudos: () => void }) {
+function SocialActions({
+  post,
+  onKudos,
+  postHref,
+}: {
+  post: Pick<PublishedPost, "kudos_count" | "comments_count" | "viewer_has_kudos">;
+  onKudos: () => void;
+  postHref?: string;
+}) {
   return (
     <div className="social-actions">
       <button type="button" className={post.viewer_has_kudos ? "is-active" : "secondary"} onClick={onKudos}>
-        Kudos {post.kudos_count}
+        <span>{kudosLabel(post)}</span>
+        <strong>{post.kudos_count}</strong>
       </button>
-      <span>{post.comments_count} comment{post.comments_count === 1 ? "" : "s"}</span>
+      {postHref ? (
+        <a href={postHref}>{socialCountLabel(post.comments_count, "comment")}</a>
+      ) : (
+        <span>{socialCountLabel(post.comments_count, "comment")}</span>
+      )}
     </div>
   );
 }
 
 
-function PublicShell({ title, status, children }: { title: string; status: string; children?: ReactNode }) {
+function PublicShell({
+  title,
+  status,
+  activePage,
+  profileSlug,
+  children,
+}: {
+  title: string;
+  status: string;
+  activePage?: "profile" | "feed" | "post";
+  profileSlug?: string | null;
+  children?: ReactNode;
+}) {
+  const [lichessStatus, setLichessStatus] = useState<LichessStatus | null>(null);
+
+  useEffect(() => {
+    void getLichessStatus()
+      .then(setLichessStatus)
+      .catch(() => setLichessStatus(null));
+  }, []);
+
   return (
     <main className="app-shell public-shell">
-      <nav className="top-nav">
-        <div>
-          <p>Swindle V1</p>
-          <h1>{title}</h1>
-        </div>
-        <div className="view-tabs">
-          <a className="tab" href="/">
-            Journal
-          </a>
-          <a className="tab" href="/feed">
-            Feed
-          </a>
-        </div>
-      </nav>
+      <TopNav
+        title={title}
+        activePage={activePage ?? "journal"}
+        lichessStatus={lichessStatus}
+        fallbackProfileSlug={profileSlug}
+      />
       {children}
       <p className="status">{status}</p>
     </main>
+  );
+}
+
+function TopNav({
+  title,
+  activePage,
+  lichessStatus,
+  fallbackProfileSlug,
+  children,
+}: {
+  title: string;
+  activePage: "journal" | "profile" | "feed" | "post";
+  lichessStatus?: LichessStatus | null;
+  fallbackProfileSlug?: string | null;
+  children?: ReactNode;
+}) {
+  return (
+    <nav className="top-nav">
+      <div>
+        <p>Swindle V1</p>
+        <h1>{title}</h1>
+      </div>
+      <div className="view-tabs">
+        {navItems(activePage, lichessStatus, fallbackProfileSlug).map((item) =>
+          item.disabled ? (
+            <button type="button" className={item.active ? "tab is-active" : "tab"} disabled key={item.label}>
+              {item.label}
+            </button>
+          ) : (
+            <a className={item.active ? "tab is-active" : "tab"} href={item.href} key={item.label}>
+              {item.label}
+            </a>
+          ),
+        )}
+        {children}
+      </div>
+    </nav>
   );
 }
 
@@ -1349,8 +1588,8 @@ function DemoControls({
   return (
     <>
       <div className="panel-heading">
-        <p>Milestone 1</p>
-        <h1>PGN to story card</h1>
+        <p>Development tool</p>
+        <h1>PGN demo story card</h1>
       </div>
 
       <label>
@@ -1398,19 +1637,6 @@ function analysisStatusMessage(card: ShareCardData | null): string {
   if (status === "partial" || status === "complete") return "Not enough cloud eval data for this game";
   if (status === "unavailable") return "No cloud eval found for this game yet";
   return "Cloud eval analysis complete";
-}
-
-function evalDebugLine(card: ShareCardData | null): string {
-  const points = card?.metrics.eval_points ?? 0;
-  const status = card?.metrics.analysis_status ?? "none";
-  const source = card?.metrics.analysis_source ?? "metadata_only";
-  const story = card?.story.primary_story ?? "none";
-  const lowest = formatMaybeEval(card?.metrics.lowest_eval);
-  const highest = formatMaybeEval(card?.metrics.highest_eval);
-  const swing = formatMaybeEval(card?.metrics.biggest_eval_swing);
-  const turn = card?.story.key_move_number ?? "None";
-  const board = card?.board_position_source ?? "none";
-  return `Story: ${story} / Eval points: ${points} / Status: ${status} / Source: ${source} / Low: ${lowest} / High: ${highest} / Swing: ${swing} / Turn: ${turn} / Board: ${board}`;
 }
 
 function formatMaybeEval(value: number | null | undefined): string {

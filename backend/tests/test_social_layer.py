@@ -61,6 +61,24 @@ def test_feed_returns_posts_from_followed_users_only() -> None:
     assert response.json()["items"][0]["display_name"] == "followed"
 
 
+def test_feed_pagination_still_works() -> None:
+    first_post = create_public_post("followed", "first-post")
+    second_post = create_public_post("followed", "second-post")
+    third_post = create_public_post("followed", "third-post")
+    client = TestClient(app)
+    client.post("/api/v1/profiles/followed/follow", headers=session("viewer"))
+
+    first_page = client.get("/api/v1/feed?limit=2&offset=0", headers=session("viewer"))
+    second_page = client.get("/api/v1/feed?limit=2&offset=2", headers=session("viewer"))
+
+    assert first_page.status_code == 200
+    assert first_page.json()["total"] == 3
+    assert first_page.json()["limit"] == 2
+    assert len(first_page.json()["items"]) == 2
+    assert [post["id"] for post in first_page.json()["items"]] == [third_post, second_post]
+    assert [post["id"] for post in second_page.json()["items"]] == [first_post]
+
+
 def test_feed_excludes_private_and_unpublished_posts() -> None:
     public_post = create_public_post("author", "public-post")
     create_public_post("author", "unpublished-post", visibility="unpublished")
