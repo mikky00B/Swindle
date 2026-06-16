@@ -22,10 +22,14 @@ jobs:
           script: |
             set -e
 
+            echo "======================================"
+            echo "Deploying Swindle..."
+            echo "======================================"
+
             echo "Moving to project directory..."
             cd ${{ secrets.VPS_PROJECT_PATH }}
 
-            echo "Pulling latest code..."
+            echo "Pulling latest code from master..."
             git fetch origin master
             git reset --hard origin/master
 
@@ -51,14 +55,23 @@ jobs:
               npm install
             fi
 
+            echo "Setting production frontend API base..."
             echo "VITE_API_BASE=https://swindle.clevermike.studio/api/v1" > .env.production
+
             npm run build
 
-            echo "Restarting backend service..."
-            sudo systemctl restart swindle
+            echo "Restarting Swindle backend..."
+            sudo /usr/bin/systemctl restart swindle
 
-            echo "Reloading nginx..."
-            sudo nginx -t
-            sudo systemctl reload nginx
+            echo "Testing Nginx config..."
+            sudo /usr/sbin/nginx -t
 
+            echo "Reloading Nginx..."
+            sudo /usr/bin/systemctl reload nginx
+
+            echo "Checking Swindle backend status..."
+            sudo /usr/bin/systemctl status swindle --no-pager
+
+            echo "======================================"
             echo "Deployment complete."
+            echo "======================================"
