@@ -10,7 +10,8 @@
     "test:chess": "node --experimental-strip-types test/chess.test.ts",
     "test:journal": "node --experimental-strip-types test/journal.test.ts",
     "test:cards": "node --experimental-strip-types test/cardMetrics.test.ts",
-    "test:public": "node --experimental-strip-types test/publicLinks.test.ts"
+    "test:public": "node --experimental-strip-types test/publicLinks.test.ts",
+    "test:social": "node --experimental-strip-types test/social.test.ts"
   },
   "dependencies": {
     "html-to-image": "^1.11.11",

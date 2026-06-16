@@ -1,11 +1,14 @@
 import type {
   GameDebug,
+  FeedResponse,
   ImportResponse,
   JournalGame,
   LichessStatus,
+  PostComment,
   PublicProfile,
   PublishedPost,
   ShareCardData,
+  SocialCounts,
 } from "../types";
 
 const API_BASE = import.meta.env.VITE_API_BASE ?? "http://localhost:8000/api/v1";
@@ -136,13 +139,72 @@ export async function unpublishStoryPost(postId: string): Promise<{ id: string; 
 }
 
 export async function getPublicProfile(username: string): Promise<PublicProfile> {
-  const response = await fetch(`${API_BASE}/profiles/${encodeURIComponent(username)}`);
+  const response = await fetch(`${API_BASE}/profiles/${encodeURIComponent(username)}`, {
+    headers: makeHeaders(),
+  });
   return readJson(response, "Could not load public profile");
 }
 
 export async function getPublicPost(postId: string): Promise<PublishedPost> {
-  const response = await fetch(`${API_BASE}/posts/${encodeURIComponent(postId)}`);
+  const response = await fetch(`${API_BASE}/posts/${encodeURIComponent(postId)}`, {
+    headers: makeHeaders(),
+  });
   return readJson(response, "Could not load public post");
+}
+
+export async function followProfile(username: string): Promise<{ following: boolean; followers_count: number }> {
+  const response = await fetch(`${API_BASE}/profiles/${encodeURIComponent(username)}/follow`, {
+    method: "POST",
+    headers: makeHeaders(),
+  });
+  return readJson(response, "Could not follow profile");
+}
+
+export async function unfollowProfile(username: string): Promise<{ following: boolean; followers_count: number }> {
+  const response = await fetch(`${API_BASE}/profiles/${encodeURIComponent(username)}/follow`, {
+    method: "DELETE",
+    headers: makeHeaders(),
+  });
+  return readJson(response, "Could not unfollow profile");
+}
+
+export async function listFeed(): Promise<FeedResponse> {
+  const response = await fetch(`${API_BASE}/feed`, {
+    headers: makeHeaders(),
+  });
+  return readJson(response, "Could not load feed");
+}
+
+export async function addKudos(postId: string): Promise<SocialCounts> {
+  const response = await fetch(`${API_BASE}/posts/${encodeURIComponent(postId)}/kudos`, {
+    method: "POST",
+    headers: makeHeaders(),
+  });
+  return readJson(response, "Could not add kudos");
+}
+
+export async function removeKudos(postId: string): Promise<SocialCounts> {
+  const response = await fetch(`${API_BASE}/posts/${encodeURIComponent(postId)}/kudos`, {
+    method: "DELETE",
+    headers: makeHeaders(),
+  });
+  return readJson(response, "Could not remove kudos");
+}
+
+export async function listComments(postId: string): Promise<PostComment[]> {
+  const response = await fetch(`${API_BASE}/posts/${encodeURIComponent(postId)}/comments`);
+  return readJson(response, "Could not load comments");
+}
+
+export async function addComment(postId: string, body: string): Promise<PostComment> {
+  const response = await fetch(`${API_BASE}/posts/${encodeURIComponent(postId)}/comments`, {
+    method: "POST",
+    headers: makeHeaders({
+      "Content-Type": "application/json",
+    }),
+    body: JSON.stringify({ body }),
+  });
+  return readJson(response, "Could not add comment");
 }
 
 export async function getImportedGameShareCard(gameId: string): Promise<ShareCardData> {
