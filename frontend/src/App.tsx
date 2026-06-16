@@ -1305,12 +1305,13 @@ function PublicPostPage({ postId }: { postId: string }) {
 function FeedPostCard({ post, onKudos }: { post: PublishedPost; onKudos: () => void }) {
   const profileUsername = profileSlugForPost(post);
   const postHref = postPath(post.id);
+  const boardFen = post.story?.key_position_fen ?? post.game?.final_fen;
   return (
     <article className="feed-card">
       <div className="feed-card-main">
-        {post.story?.key_position_fen ? (
+        {boardFen ? (
           <a className="feed-card-board" href={postHref} aria-label={`Open post: ${post.headline}`}>
-            <ChessBoard fen={post.story.key_position_fen} />
+            <ChessBoard fen={boardFen} />
           </a>
         ) : null}
         <div className="feed-card-copy">
@@ -1352,11 +1353,12 @@ function FeedPostCard({ post, onKudos }: { post: PublishedPost; onKudos: () => v
 
 function ProfilePostCard({ post }: { post: PublishedPost }) {
   const href = profileCardHref(post.id);
+  const boardFen = post.story?.key_position_fen ?? post.game?.final_fen;
   return (
     <a className="profile-post-card" href={href} aria-label={`View card: ${post.headline}`}>
-      {post.story?.key_position_fen ? (
+      {boardFen ? (
         <div className="profile-card-board" aria-hidden="true">
-          <ChessBoard fen={post.story.key_position_fen} />
+          <ChessBoard fen={boardFen} />
         </div>
       ) : null}
       <div className="suggested-card-top">

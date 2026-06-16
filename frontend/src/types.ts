@@ -161,6 +161,7 @@ export type PublishedPost = PublishedPostSummary & {
     speed?: string | null;
     time_control?: string | null;
     played_at?: string | null;
+    final_fen?: string | null;
   } | null;
   story?: {
     id: string;

@@ -12,14 +12,19 @@ import type {
 } from "../types";
 
 const API_BASE = import.meta.env.VITE_API_BASE ?? "http://localhost:8000/api/v1";
+const SESSION_STORAGE_KEY = "swindle-session-id";
 
-// Browser session isolation: each tab/window gets a unique ID
+// Keep one browser identity across tabs and OAuth redirects.
 function getSessionId(): string {
-  let sessionId = sessionStorage.getItem("swindle-session-id");
+  let sessionId = localStorage.getItem(SESSION_STORAGE_KEY);
+  if (!sessionId) {
+    sessionId = sessionStorage.getItem(SESSION_STORAGE_KEY);
+  }
   if (!sessionId) {
     sessionId = `session-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
-    sessionStorage.setItem("swindle-session-id", sessionId);
   }
+  localStorage.setItem(SESSION_STORAGE_KEY, sessionId);
+  sessionStorage.setItem(SESSION_STORAGE_KEY, sessionId);
   return sessionId;
 }
 
