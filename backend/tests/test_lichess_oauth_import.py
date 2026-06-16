@@ -93,6 +93,24 @@ def test_connect_url_endpoint_returns_oauth_url_for_session_user() -> None:
     assert state.user_id == user.id
 
 
+def test_connect_redirect_accepts_session_id_query_param() -> None:
+    client = TestClient(app)
+
+    response = client.get(
+        "/api/v1/integrations/lichess/connect?session_id=session-1781471651808-46122pw6o",
+        follow_redirects=False,
+    )
+
+    assert response.status_code == 302
+    assert response.headers["location"].startswith("https://lichess.org/oauth?")
+    with get_session() as session:
+        user = session.get(User, "session-1781471651808-46122pw6o")
+        state = session.scalar(select(OAuthState))
+    assert user is not None
+    assert state is not None
+    assert state.user_id == user.id
+
+
 def test_local_session_users_get_unique_placeholder_usernames() -> None:
     with get_session() as session:
         first = ensure_local_user(session, "session-1781471651808-46122pw6o")

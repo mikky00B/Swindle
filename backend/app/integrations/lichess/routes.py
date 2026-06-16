@@ -19,6 +19,9 @@ router = APIRouter(prefix="/integrations/lichess", tags=["lichess"])
 
 def _get_user_id(request: Request) -> str:
     """Extract user_id from X-Session-Id header (browser session isolation)"""
+    session_id = request.query_params.get("session_id")
+    if session_id:
+        return session_id
     return request.headers.get("X-Session-Id", "local-dev-user")
 
 
