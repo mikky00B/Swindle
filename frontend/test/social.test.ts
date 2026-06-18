@@ -27,6 +27,7 @@ assert.equal(socialCountLabel(2, "comment"), "2 comments");
 
 const nav = navItems("feed", { platform_username: "Clevermike02" });
 assert.deepEqual(nav.map((item) => item.label), ["Journal", "Profile", "Feed"]);
+assert.equal(nav.find((item) => item.label === "Journal")?.href, "/journal");
 assert.equal(nav.find((item) => item.label === "Profile")?.href, "/profile/Clevermike02");
 assert.equal(nav.find((item) => item.label === "Feed")?.active, true);
 assert.equal(navItems("post", { platform_username: "Clevermike02" }).find((item) => item.label === "Feed")?.active, true);

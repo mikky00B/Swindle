@@ -28,7 +28,7 @@ export function navItems(
 ): Array<{ label: "Journal" | "Profile" | "Feed"; href?: string; active: boolean; disabled?: boolean }> {
   const profileSlug = status?.platform_username ?? fallbackProfileSlug ?? null;
   return [
-    { label: "Journal", href: "/", active: activePage === "journal" },
+    { label: "Journal", href: "/journal", active: activePage === "journal" },
     {
       label: "Profile",
       href: profileSlug ? `/profile/${encodeURIComponent(profileSlug)}` : undefined,

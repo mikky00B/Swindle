@@ -1,14 +1,19 @@
 import { toPng } from "html-to-image";
 
-export async function exportElementAsPng(element: HTMLElement, fileName: string): Promise<void> {
+type ExportPngOptions = {
+  width: number;
+  height: number;
+};
+
+export async function exportElementAsPng(element: HTMLElement, fileName: string, options: ExportPngOptions): Promise<void> {
   const dataUrl = await toPng(element, {
     cacheBust: true,
     pixelRatio: 2,
-    width: 1080,
-    height: 1080,
+    width: options.width,
+    height: options.height,
     style: {
-      width: "1080px",
-      height: "1080px",
+      width: `${options.width}px`,
+      height: `${options.height}px`,
     },
   });
   const link = document.createElement("a");

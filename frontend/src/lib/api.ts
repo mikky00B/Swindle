@@ -7,6 +7,9 @@ import type {
   PostComment,
   PublicProfile,
   PublishedPost,
+  SessionDetail,
+  SessionShareCardData,
+  SessionSummary,
   ShareCardData,
   SocialCounts,
 } from "../types";
@@ -113,10 +116,13 @@ export async function resetIgnoredSuggestions(): Promise<{ restored: number }> {
   return readJson(response, "Could not reset ignored suggestions");
 }
 
-export async function publishStoryCard(storyId: string): Promise<PublishedPost> {
+export async function publishStoryCard(storyId: string, cardTheme = "classic", cardSize = "square"): Promise<PublishedPost> {
   const response = await fetch(`${API_BASE}/stories/${storyId}/publish`, {
     method: "POST",
-    headers: makeHeaders(),
+    headers: makeHeaders({
+      "Content-Type": "application/json",
+    }),
+    body: JSON.stringify({ card_theme: cardTheme, card_size: cardSize }),
   });
   return readJson(response, "Could not publish card");
 }
@@ -241,6 +247,35 @@ export async function getJournalGameDebug(gameId: string): Promise<GameDebug> {
     headers: makeHeaders(),
   });
   return readJson(response, "Could not load debug data");
+}
+
+export async function listSessions(): Promise<SessionSummary[]> {
+  const response = await fetch(`${API_BASE}/sessions`, {
+    headers: makeHeaders(),
+  });
+  return readJson(response, "Could not load recent sessions");
+}
+
+export async function rebuildSessions(): Promise<{ sessions: number }> {
+  const response = await fetch(`${API_BASE}/sessions/rebuild`, {
+    method: "POST",
+    headers: makeHeaders(),
+  });
+  return readJson(response, "Could not rebuild sessions");
+}
+
+export async function getSessionDetail(sessionId: string): Promise<SessionDetail> {
+  const response = await fetch(`${API_BASE}/sessions/${encodeURIComponent(sessionId)}`, {
+    headers: makeHeaders(),
+  });
+  return readJson(response, "Could not load session recap");
+}
+
+export async function getSessionShareCard(sessionId: string): Promise<SessionShareCardData> {
+  const response = await fetch(`${API_BASE}/sessions/${encodeURIComponent(sessionId)}/share-card`, {
+    headers: makeHeaders(),
+  });
+  return readJson(response, "Could not load session recap card");
 }
 
 async function readJson<T>(response: Response, fallback: string): Promise<T> {

@@ -469,6 +469,8 @@ def _published_post_summary(post: PublishedPost | None) -> dict[str, Any] | None
         "game_story_id": post.game_story_id,
         "headline": post.headline,
         "caption": post.caption,
+        "card_theme": post.card_theme or "classic",
+        "card_size": post.card_size or "square",
         "visibility": post.visibility,
         "created_at": _iso(post.created_at),
         "updated_at": _iso(post.updated_at),

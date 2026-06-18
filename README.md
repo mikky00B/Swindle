@@ -11,7 +11,13 @@ Swindle is not a chess playing site and does not compete with Lichess. It is a l
 - Private chess journal for imported games.
 - Rule-based story processor with metadata and optional Lichess cloud evaluation data.
 - Suggested story-worthy games without auto-publishing.
-- 1080 x 1080 share-card preview and PNG export.
+- Public landing page with example story cards and browser-based Lichess OAuth navigation.
+- Share-card theme system with Classic, Minimal, Neon Blitz, and Newspaper themes.
+- Multiple export sizes: square, story, portrait, and landscape.
+- PNG export with selected theme and size.
+- Published posts preserve card theme and size, with fallbacks for older posts.
+- Private session recaps that group imported Lichess games played close together.
+- Session recap PNG export with mood, record, opening, rating delta, and best story.
 - Public profile with published cards only.
 - Pull-based feed from followed users.
 - Follow/unfollow, kudos, and comments on public posts.
@@ -27,6 +33,7 @@ backend/
     games/                import, PGN parsing, game routes
     integrations/lichess/ Lichess OAuth and API integration
     publishing/           public profiles, posts, feed, social actions
+    sessions/             session recap grouping, summaries, share-card data
     story/                story detection, scoring, templates
     prototype/            development PGN story endpoint
   alembic/                database migrations
@@ -90,7 +97,17 @@ Local URLs:
 ```text
 Frontend:    http://127.0.0.1:5173
 Backend API: http://127.0.0.1:8000
-Health:      http://127.0.0.1:8000/health/live
+```
+
+Primary frontend routes:
+
+```text
+/                  landing page
+/journal           private journal and share-card workspace
+/sessions/:id      private session recap detail
+/feed              public feed
+/profile/:username public profile
+/p/:post_id        public post page
 ```
 
 ## Verification
@@ -107,11 +124,7 @@ Frontend build and tests:
 ```powershell
 cd frontend
 npm run build
-npm run test:chess
-npm run test:journal
-npm run test:cards
-npm run test:public
-npm run test:social
+npm run test
 ```
 
 ## API Surface
@@ -119,8 +132,6 @@ npm run test:social
 Core endpoints use `/api/v1`.
 
 ```http
-GET  /health/live
-
 GET  /api/v1/integrations/lichess/connect
 GET  /api/v1/integrations/lichess/connect-url
 GET  /api/v1/integrations/lichess/callback
@@ -133,6 +144,11 @@ GET  /api/v1/games/{game_id}
 POST /api/v1/games/{game_id}/process
 POST /api/v1/games/{game_id}/analyze
 GET  /api/v1/games/{game_id}/share-card
+
+GET  /api/v1/sessions
+GET  /api/v1/sessions/{session_id}
+POST /api/v1/sessions/rebuild
+GET  /api/v1/sessions/{session_id}/share-card
 
 GET  /api/v1/stories/suggested
 POST /api/v1/stories/{story_id}/publish

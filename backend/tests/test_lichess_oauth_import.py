@@ -635,9 +635,63 @@ def test_publish_story_creates_public_post(monkeypatch) -> None:
 
     assert response.status_code == 200
     assert response.json()["visibility"] == "public"
+    assert response.json()["card_theme"] == "classic"
+    assert response.json()["card_size"] == "square"
     assert response.json()["game_story_id"] == game["story"]["id"]
     with get_session() as session:
         assert len(session.scalars(select(PublishedPost)).all()) == 1
+
+
+def test_publish_story_saves_selected_card_theme(monkeypatch) -> None:
+    monkeypatch.setattr(httpx, "AsyncClient", MockAsyncClient)
+    client = connected_client()
+    client.post("/api/v1/games/import/lichess")
+    story_id = client.get("/api/v1/games").json()[0]["story"]["id"]
+
+    post = client.post(f"/api/v1/stories/{story_id}/publish", json={"card_theme": "neon_blitz"}).json()
+    public_post = client.get(f"/api/v1/posts/{post['id']}").json()
+    profile_post = client.get("/api/v1/profiles/clevermike").json()["posts"][0]
+
+    assert post["card_theme"] == "neon_blitz"
+    assert public_post["card_theme"] == "neon_blitz"
+    assert profile_post["card_theme"] == "neon_blitz"
+
+
+def test_publish_story_saves_selected_card_size(monkeypatch) -> None:
+    monkeypatch.setattr(httpx, "AsyncClient", MockAsyncClient)
+    client = connected_client()
+    client.post("/api/v1/games/import/lichess")
+    story_id = client.get("/api/v1/games").json()[0]["story"]["id"]
+
+    post = client.post(
+        f"/api/v1/stories/{story_id}/publish",
+        json={"card_theme": "newspaper", "card_size": "landscape"},
+    ).json()
+    public_post = client.get(f"/api/v1/posts/{post['id']}").json()
+    profile_post = client.get("/api/v1/profiles/clevermike").json()["posts"][0]
+
+    assert post["card_theme"] == "newspaper"
+    assert post["card_size"] == "landscape"
+    assert public_post["card_theme"] == "newspaper"
+    assert public_post["card_size"] == "landscape"
+    assert profile_post["card_size"] == "landscape"
+
+
+def test_publish_story_unknown_or_locked_theme_falls_back_to_classic(monkeypatch) -> None:
+    monkeypatch.setattr(httpx, "AsyncClient", MockAsyncClient)
+    client = connected_client()
+    client.post("/api/v1/games/import/lichess")
+    story_id = client.get("/api/v1/games").json()[0]["story"]["id"]
+
+    locked = client.post(f"/api/v1/stories/{story_id}/publish", json={"card_theme": "luxury"}).json()
+    unknown = client.post(
+        f"/api/v1/stories/{story_id}/publish",
+        json={"card_theme": "made_up", "card_size": "poster"},
+    ).json()
+
+    assert locked["card_theme"] == "classic"
+    assert unknown["card_theme"] == "classic"
+    assert unknown["card_size"] == "square"
 
 
 def test_publish_story_twice_does_not_duplicate(monkeypatch) -> None:

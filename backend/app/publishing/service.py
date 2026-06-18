@@ -12,12 +12,22 @@ from app.core.database import get_session
 from app.integrations.lichess.service import ensure_local_user
 from app.models import ChessAccount, Comment, Follow, Game, GameMetric, GameStory, Kudos, PublishedPost, User
 
+FREE_CARD_THEMES = {"classic", "minimal", "neon_blitz", "newspaper"}
+CARD_SIZES = {"square", "story", "portrait", "landscape"}
+
 
 class SocialError(ValueError):
     pass
 
 
-def publish_story(story_id: str, user_id: str) -> dict[str, Any] | None:
+def publish_story(
+    story_id: str,
+    user_id: str,
+    card_theme: str | None = None,
+    card_size: str | None = None,
+) -> dict[str, Any] | None:
+    normalized_theme = _normalize_card_theme(card_theme)
+    normalized_size = _normalize_card_size(card_size)
     with get_session() as session:
         story = session.scalar(
             select(GameStory)
@@ -41,6 +51,8 @@ def publish_story(story_id: str, user_id: str) -> dict[str, Any] | None:
                 game_story_id=story.id,
                 headline=story.headline,
                 caption=story.caption,
+                card_theme=normalized_theme,
+                card_size=normalized_size,
                 visibility="public",
                 created_at=now,
                 updated_at=now,
@@ -50,6 +62,8 @@ def publish_story(story_id: str, user_id: str) -> dict[str, Any] | None:
         else:
             post.headline = story.headline
             post.caption = story.caption
+            post.card_theme = normalized_theme
+            post.card_size = normalized_size
             post.visibility = "public"
             post.updated_at = now
             session.flush()
@@ -362,6 +376,8 @@ def _post_to_dict(
         "game_story_id": post.game_story_id,
         "headline": post.headline,
         "caption": post.caption,
+        "card_theme": _normalize_card_theme(post.card_theme),
+        "card_size": _normalize_card_size(post.card_size),
         "visibility": post.visibility,
         "created_at": _iso(post.created_at),
         "updated_at": _iso(post.updated_at),
@@ -422,6 +438,18 @@ def _story_summary(story: GameStory | None) -> dict[str, Any] | None:
         "interesting_score": story.interesting_score,
         "key_position_fen": story.key_position_fen,
     }
+
+
+def _normalize_card_theme(card_theme: str | None) -> str:
+    if card_theme in FREE_CARD_THEMES:
+        return card_theme
+    return "classic"
+
+
+def _normalize_card_size(card_size: str | None) -> str:
+    if card_size in CARD_SIZES:
+        return card_size
+    return "square"
 
 
 def _iso(value: datetime | None) -> str | None:

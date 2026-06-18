@@ -7,12 +7,15 @@
     "dev": "vite --host 127.0.0.1",
     "build": "tsc && vite build",
     "preview": "vite preview --host 127.0.0.1",
-    "test": "npm run test:chess && npm run test:journal && npm run test:cards && npm run test:public && npm run test:social",
+    "test": "npm run test:chess && npm run test:journal && npm run test:cards && npm run test:themes && npm run test:landing && npm run test:public && npm run test:social && npm run test:sessions",
     "test:chess": "node --experimental-strip-types test/chess.test.ts",
     "test:journal": "node --experimental-strip-types test/journal.test.ts",
     "test:cards": "node --experimental-strip-types test/cardMetrics.test.ts",
+    "test:themes": "node --experimental-strip-types test/cardThemes.test.ts",
+    "test:landing": "node --experimental-strip-types test/landing.test.ts",
     "test:public": "node --experimental-strip-types test/publicLinks.test.ts",
-    "test:social": "node --experimental-strip-types test/social.test.ts"
+    "test:social": "node --experimental-strip-types test/social.test.ts",
+    "test:sessions": "node --experimental-strip-types test/sessions.test.ts"
   },
   "dependencies": {
     "html-to-image": "^1.11.11",

@@ -30,7 +30,10 @@ async def ignore_story(story_id: str, request: Request) -> dict:
 
 @router.post("/{story_id}/publish")
 async def publish_story_card(story_id: str, request: Request) -> dict:
-    result = publish_story(story_id, _get_user_id(request))
+    payload = await request.json() if request.headers.get("content-type", "").startswith("application/json") else {}
+    card_theme = payload.get("card_theme") if isinstance(payload, dict) else None
+    card_size = payload.get("card_size") if isinstance(payload, dict) else None
+    result = publish_story(story_id, _get_user_id(request), card_theme=card_theme, card_size=card_size)
     if result is None:
         raise HTTPException(status_code=404, detail="Story not found")
     return result
