@@ -8,6 +8,7 @@ from app.core.database import init_db
 from app.games.routes import router as games_router
 from app.integrations.lichess.routes import router as lichess_router
 from app.publishing.routes import router as publishing_router
+from app.sessions.routes import router as sessions_router
 from app.prototype.routes import router as prototype_router
 from app.story.routes import router as story_router
 
@@ -36,6 +37,7 @@ app.include_router(lichess_router, prefix=settings.api_v1_prefix)
 app.include_router(games_router, prefix=settings.api_v1_prefix)
 app.include_router(story_router, prefix=settings.api_v1_prefix)
 app.include_router(publishing_router, prefix=settings.api_v1_prefix)
+app.include_router(sessions_router, prefix=settings.api_v1_prefix)
 
 
 @app.get("/health/live")

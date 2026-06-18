@@ -97,6 +97,70 @@ export type JournalGame = {
   published_post?: PublishedPostSummary | null;
 };
 
+export type SessionGameSummary = {
+  id: string;
+  result: string;
+  opening_name?: string | null;
+  opponent_username?: string | null;
+  moves_count?: number | null;
+  played_at?: string | null;
+  story?: {
+    id: string;
+    primary_story: string;
+    badge_label: string;
+    badge_emoji: string;
+    headline: string;
+  } | null;
+};
+
+export type SessionSummary = {
+  id: string;
+  started_at?: string | null;
+  ended_at?: string | null;
+  games_count: number;
+  wins_count: number;
+  losses_count: number;
+  draws_count: number;
+  win_rate: number;
+  best_story_type?: string | null;
+  best_game_id?: string | null;
+  best_game_story_id?: string | null;
+  most_common_opening?: string | null;
+  rating_delta?: number | null;
+  mood?: string | null;
+  summary_headline: string;
+  summary_subheadline?: string | null;
+  swindle_count?: number;
+  heartbreaker_count?: number;
+  miniature_count?: number;
+  long_grind_count?: number;
+  giant_slayer_count?: number;
+  turning_point_count?: number;
+};
+
+export type SessionShareCardData = {
+  kind: "session_recap";
+  template: string;
+  player: {
+    username: string;
+    avatar_url?: string | null;
+  };
+  session: SessionSummary;
+  stats: {
+    record: string;
+    games_count: number;
+    best_story?: string | null;
+    most_common_opening?: string | null;
+    rating_delta?: number | null;
+  };
+};
+
+export type SessionDetail = SessionSummary & {
+  games: SessionGameSummary[];
+  best_game?: SessionGameSummary | null;
+  share_card?: SessionShareCardData;
+};
+
 export type GameAnalysisMetrics = {
   accuracy?: number | null;
   lowest_eval?: number | null;
@@ -138,6 +202,8 @@ export type PublishedPostSummary = {
   game_story_id: string;
   headline: string;
   caption?: string | null;
+  card_theme?: string | null;
+  card_size?: string | null;
   visibility: "public" | "unpublished";
   created_at?: string | null;
   updated_at?: string | null;

@@ -209,12 +209,61 @@ class PublishedPost(Base):
     game_story_id: Mapped[str] = mapped_column(String(36), ForeignKey("game_stories.id", ondelete="CASCADE"), index=True)
     headline: Mapped[str] = mapped_column(Text)
     caption: Mapped[str | None] = mapped_column(Text, nullable=True)
+    card_theme: Mapped[str] = mapped_column(String(32), default="classic")
+    card_size: Mapped[str] = mapped_column(String(32), default="square")
     visibility: Mapped[str] = mapped_column(String(32), default="public", index=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, onupdate=utcnow)
 
     game: Mapped[Game] = relationship()
     game_story: Mapped[GameStory] = relationship()
+
+
+class GameSession(Base):
+    __tablename__ = "game_sessions"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=uuid_str)
+    user_id: Mapped[str] = mapped_column(String(36), ForeignKey("users.id", ondelete="CASCADE"), index=True)
+    started_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), index=True)
+    ended_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), index=True)
+    games_count: Mapped[int] = mapped_column(Integer)
+    wins_count: Mapped[int] = mapped_column(Integer, default=0)
+    losses_count: Mapped[int] = mapped_column(Integer, default=0)
+    draws_count: Mapped[int] = mapped_column(Integer, default=0)
+    win_rate: Mapped[float] = mapped_column(Float, default=0)
+    best_story_type: Mapped[str | None] = mapped_column(String(80), nullable=True)
+    best_game_id: Mapped[str | None] = mapped_column(String(36), ForeignKey("games.id", ondelete="SET NULL"), nullable=True)
+    best_game_story_id: Mapped[str | None] = mapped_column(String(36), ForeignKey("game_stories.id", ondelete="SET NULL"), nullable=True)
+    most_common_opening: Mapped[str | None] = mapped_column(Text, nullable=True)
+    rating_delta: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    mood: Mapped[str | None] = mapped_column(String(80), nullable=True)
+    summary_headline: Mapped[str] = mapped_column(Text)
+    summary_subheadline: Mapped[str | None] = mapped_column(Text, nullable=True)
+    swindle_count: Mapped[int] = mapped_column(Integer, default=0)
+    heartbreaker_count: Mapped[int] = mapped_column(Integer, default=0)
+    miniature_count: Mapped[int] = mapped_column(Integer, default=0)
+    long_grind_count: Mapped[int] = mapped_column(Integer, default=0)
+    giant_slayer_count: Mapped[int] = mapped_column(Integer, default=0)
+    turning_point_count: Mapped[int] = mapped_column(Integer, default=0)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, onupdate=utcnow)
+
+    games: Mapped[list[GameSessionGame]] = relationship(back_populates="session", cascade="all, delete-orphan")
+    best_game: Mapped[Game | None] = relationship(foreign_keys=[best_game_id])
+    best_game_story: Mapped[GameStory | None] = relationship(foreign_keys=[best_game_story_id])
+
+
+class GameSessionGame(Base):
+    __tablename__ = "game_session_games"
+    __table_args__ = (UniqueConstraint("session_id", "game_id", name="uq_game_session_games_session_game"),)
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=uuid_str)
+    session_id: Mapped[str] = mapped_column(String(36), ForeignKey("game_sessions.id", ondelete="CASCADE"), index=True)
+    game_id: Mapped[str] = mapped_column(String(36), ForeignKey("games.id", ondelete="CASCADE"), index=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+
+    session: Mapped[GameSession] = relationship(back_populates="games")
+    game: Mapped[Game] = relationship()
 
 
 class Follow(Base):

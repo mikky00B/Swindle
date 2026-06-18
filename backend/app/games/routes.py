@@ -13,6 +13,7 @@ from app.games.repository import (
     reprocess_game,
 )
 from app.integrations.lichess.schemas import LichessImportResponse
+from app.sessions.processor import rebuild_user_sessions
 from app.share_cards.schemas import ShareCardData
 
 router = APIRouter(prefix="/games", tags=["games"])
@@ -45,13 +46,16 @@ async def import_lichess_games(limit: int = Query(default=20, ge=10, le=20), req
         result = await import_latest_lichess_games(limit=limit, user_id=user_id)
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
+    rebuild_user_sessions(user_id)
     return LichessImportResponse(**result)
 
 
 @router.post("/reprocess-all")
 async def process_all_imported_games(request: Request) -> dict:
     user_id = _get_user_id(request)
-    return reprocess_all_games(user_id)
+    result = reprocess_all_games(user_id)
+    rebuild_user_sessions(user_id)
+    return result
 
 
 @router.get("/{game_id}/share-card", response_model=ShareCardData)
@@ -78,6 +82,7 @@ async def process_imported_game(game_id: str, request: Request, with_eval: bool 
     game = reprocess_game(game_id, user_id, with_eval=with_eval)
     if game is None:
         raise HTTPException(status_code=404, detail="Imported game not found")
+    rebuild_user_sessions(user_id)
     return game
 
 
@@ -87,6 +92,7 @@ async def analyze_imported_game(game_id: str, request: Request) -> dict:
     game = reprocess_game(game_id, user_id, with_eval=True)
     if game is None:
         raise HTTPException(status_code=404, detail="Imported game not found")
+    rebuild_user_sessions(user_id)
     return game
 
 
@@ -103,4 +109,5 @@ async def debug_eval_imported_game(game_id: str, payload: DebugEvalRequest, requ
     )
     if game is None:
         raise HTTPException(status_code=404, detail="Imported game not found")
+    rebuild_user_sessions(user_id)
     return game

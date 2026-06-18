@@ -3,14 +3,19 @@ import { MetricsGrid } from "./MetricsGrid";
 import { StoryBadge } from "./StoryBadge";
 import type { ShareCardData } from "../../types";
 import { positionLabel } from "../../lib/boardLabels";
+import { CARD_SIZES, normalizeCardSize, themeClassName, type ShareCardSize, type ShareCardTheme } from "../../lib/cardThemes";
 
 type ShareCardProps = {
   card: ShareCardData;
+  theme?: ShareCardTheme;
+  size?: ShareCardSize;
   showDevDebug?: boolean;
 };
 
-export function ShareCard({ card, showDevDebug = true }: ShareCardProps) {
+export function ShareCardRenderer({ card, theme = "classic", size = "square", showDevDebug = true }: ShareCardProps) {
   void showDevDebug;
+  const normalizedSize = normalizeCardSize(size);
+  const dimensions = CARD_SIZES[normalizedSize];
   const detail = [
     card.player.username,
     card.game.speed,
@@ -20,7 +25,12 @@ export function ShareCard({ card, showDevDebug = true }: ShareCardProps) {
   const headlineClass = getHeadlineSizeClass(card.story.headline);
 
   return (
-    <article className={`share-card template-${card.template}`}>
+    <article
+      className={`share-card ${themeClassName(theme)} size-${normalizedSize} template-${card.template}`}
+      data-theme={theme}
+      data-size={normalizedSize}
+      style={{ width: dimensions.width, height: dimensions.height }}
+    >
       <header className="card-header">
         <div>
           <p className="brand">Swindle</p>
@@ -65,6 +75,10 @@ export function ShareCard({ card, showDevDebug = true }: ShareCardProps) {
       </footer>
     </article>
   );
+}
+
+export function ShareCard(props: ShareCardProps) {
+  return <ShareCardRenderer {...props} />;
 }
 
 export function getHeadlineSizeClass(headline: string): string {
