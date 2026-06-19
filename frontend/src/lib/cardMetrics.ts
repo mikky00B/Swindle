@@ -15,7 +15,7 @@ export function getMetricRows(card: ShareCardData): string[][] {
     ["Opponent", card.game.opponent_username ?? "Unknown"],
     ["Opp. rating", card.game.opponent_rating != null ? String(card.game.opponent_rating) : "Unknown"],
     ["Opening", card.game.opening ?? "Unknown"],
-    ["Speed", card.game.speed ?? "Unknown"],
+    ["Format", card.game.speed ?? "Unknown"],
     ["Time control", card.game.time_control ?? "Unknown"],
     ...(card.game.rating_change != null ? [["Rating diff", formatSigned(card.game.rating_change)]] : []),
   ];

@@ -1,6 +1,6 @@
 import type { JournalGame } from "../types";
 
-export type JournalFilter = "all" | "wins" | "losses" | "draws" | "suggested" | "processed" | "failed";
+export type JournalFilter = "all" | "lichess" | "chesscom" | "wins" | "losses" | "draws" | "suggested" | "processed" | "failed";
 
 export function filterJournalGames(
   games: JournalGame[],
@@ -11,6 +11,8 @@ export function filterJournalGames(
   const query = search.trim().toLowerCase();
   return games.filter((game) => {
     if (filter === "wins" && game.result !== "win") return false;
+    if (filter === "lichess" && game.platform !== "lichess") return false;
+    if (filter === "chesscom" && game.platform !== "chesscom") return false;
     if (filter === "losses" && game.result !== "loss") return false;
     if (filter === "draws" && game.result !== "draw") return false;
     if (filter === "suggested" && !suggestedGameIds.has(game.id)) return false;

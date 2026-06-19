@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from collections import Counter
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timezone
 from typing import Any
 
 from sqlalchemy import delete, select
@@ -10,8 +10,6 @@ from sqlalchemy.orm import joinedload
 from app.core.database import get_session
 from app.integrations.lichess.service import ensure_local_user
 from app.models import Game, GameSession, GameSessionGame, GameStory, User
-
-SESSION_GAP_HOURS = 2
 
 STORY_PRIORITY = {
     "rating_milestone": 110,
@@ -43,7 +41,7 @@ def rebuild_user_sessions(user_id: str) -> dict[str, int]:
             session.scalars(
                 select(Game)
                 .options(joinedload(Game.story))
-                .where(Game.user_id == user_id, Game.platform == "lichess", Game.played_at.is_not(None))
+                .where(Game.user_id == user_id, Game.played_at.is_not(None))
                 .order_by(Game.played_at.asc())
             )
             .unique()
@@ -57,8 +55,6 @@ def rebuild_user_sessions(user_id: str) -> dict[str, int]:
         session.execute(delete(GameSession).where(GameSession.user_id == user_id))
         created = 0
         for group in _group_games(games):
-            if len(group) < 2:
-                continue
             recap = _build_session_model(user_id, group)
             session.add(recap)
             session.flush()
@@ -94,6 +90,7 @@ def get_session_detail(session_id: str, user_id: str) -> dict[str, Any] | None:
         )
         payload = _session_summary(recap)
         payload["games"] = [_game_summary(link.game) for link in links]
+        payload["openings"] = _opening_breakdown([link.game for link in links if link.game is not None])
         payload["best_game"] = _game_summary(recap.best_game) if recap.best_game else None
         payload["share_card"] = _session_share_card(recap, links)
         return payload
@@ -107,19 +104,12 @@ def get_session_share_card(session_id: str, user_id: str) -> dict[str, Any] | No
 
 
 def _group_games(games: list[Game]) -> list[list[Game]]:
-    groups: list[list[Game]] = []
-    current: list[Game] = []
-    gap = timedelta(hours=SESSION_GAP_HOURS)
+    groups_by_day: dict[datetime.date, list[Game]] = {}
     for game in games:
         if game.played_at is None:
             continue
-        if current and game.played_at - current[-1].played_at > gap:
-            groups.append(current)
-            current = []
-        current.append(game)
-    if current:
-        groups.append(current)
-    return groups
+        groups_by_day.setdefault(game.played_at.date(), []).append(game)
+    return [groups_by_day[day] for day in sorted(groups_by_day)]
 
 
 def _build_session_model(user_id: str, games: list[Game]) -> GameSession:
@@ -129,11 +119,10 @@ def _build_session_model(user_id: str, games: list[Game]) -> GameSession:
     story_counts = Counter(game.story.primary_story for game in games if game.story is not None)
     best_story = _best_story(games)
     opening = _most_common_opening(games)
-    rating_delta_values = [game.rating_change for game in games if game.rating_change is not None]
-    rating_delta = sum(rating_delta_values) if rating_delta_values else None
+    rating_delta = _rating_delta(games)
     mood = _mood(len(games), wins, losses, story_counts)
     headline = _headline(len(games), wins, losses, draws, mood, best_story, rating_delta)
-    subheadline = _subheadline(opening, best_story, wins, losses, draws)
+    subheadline = _subheadline(best_story, wins, losses, draws)
     now = datetime.now(timezone.utc)
     return GameSession(
         user_id=user_id,
@@ -178,9 +167,33 @@ def _most_common_opening(games: list[Game]) -> str:
     return opening if count > 1 or len(openings) >= len(games) / 2 else "Mixed openings"
 
 
+def _rating_delta(games: list[Game]) -> int | None:
+    explicit = sum(game.rating_change for game in games if game.rating_change is not None)
+    has_explicit = any(game.rating_change is not None for game in games)
+    inferred = 0
+    has_inferred = False
+    grouped: dict[tuple[str, str | None], list[Game]] = {}
+    for game in games:
+        if game.rating_change is not None or game.user_rating_before is None:
+            continue
+        grouped.setdefault((game.platform, game.speed), []).append(game)
+
+    for group in grouped.values():
+        ordered = sorted(group, key=lambda game: game.played_at or datetime.min.replace(tzinfo=timezone.utc))
+        ratings = [game.user_rating_before for game in ordered if game.user_rating_before is not None]
+        if len(ratings) < 2:
+            continue
+        inferred += ratings[-1] - ratings[0]
+        has_inferred = True
+
+    if not has_explicit and not has_inferred:
+        return None
+    return explicit + inferred
+
+
 def _mood(games_count: int, wins: int, losses: int, stories: Counter[str]) -> str:
     if losses >= 4 and losses > wins:
-        return "Tilt session"
+        return "Tilt day"
     if wins >= 4 and wins > losses:
         return "Clean climb"
     if stories["swindle"] >= 1:
@@ -199,20 +212,46 @@ def _mood(games_count: int, wins: int, losses: int, stories: Counter[str]) -> st
 def _headline(games_count: int, wins: int, losses: int, draws: int, mood: str, best_story: GameStory | None, rating_delta: int | None) -> str:
     story_label = _story_label(best_story.primary_story) if best_story else None
     if mood == "Clean climb" and story_label:
-        return f"A {games_count}-game session with {wins} wins and a {story_label} highlight."
-    if mood == "Tilt session":
-        return f"A tough session: {wins} wins, {losses} losses, and lessons for the next run."
+        return f"A {games_count}-game day with {wins} wins and a {story_label} highlight."
+    if mood == "Tilt day":
+        return f"A tough chess day: {wins} wins, {losses} losses, and lessons for the next run."
     if mood == "Chaos survived":
-        return f"A chaotic run of {games_count} games that somehow found an escape."
+        return f"A chaotic chess day of {games_count} games that somehow found an escape."
     if draws:
-        return f"A balanced {games_count}-game session: {wins}W - {losses}L - {draws}D."
+        return f"A balanced {games_count}-game day: {wins}W - {losses}L - {draws}D."
     if rating_delta and rating_delta > 0:
-        return f"A {games_count}-game session that finished positive by {rating_delta} rating points."
-    return f"A {games_count}-game chess session added to the journal."
+        return f"A {games_count}-game chess day that finished positive by {rating_delta} rating points."
+    return f"A {games_count}-game chess day added to the journal."
 
 
-def _subheadline(opening: str, best_story: GameStory | None, wins: int, losses: int, draws: int) -> str:
-    parts = [f"Record: {wins}W - {losses}L - {draws}D.", f"Most common opening: {opening}."]
+def _opening_breakdown(games: list[Game]) -> list[dict[str, Any]]:
+    grouped: dict[str, dict[str, Any]] = {}
+    for game in games:
+        name = game.opening_name or "Unclassified opening"
+        item = grouped.setdefault(name, {"name": name, "games": 0, "wins": 0, "losses": 0, "draws": 0})
+        item["games"] += 1
+        if game.result == "win":
+            item["wins"] += 1
+        elif game.result == "loss":
+            item["losses"] += 1
+        elif game.result == "draw":
+            item["draws"] += 1
+
+    breakdown = []
+    for item in grouped.values():
+        games_count = item["games"]
+        breakdown.append(
+            {
+                **item,
+                "record": f"{item['wins']}W - {item['losses']}L - {item['draws']}D",
+                "win_rate": item["wins"] / games_count if games_count else 0,
+            }
+        )
+    return sorted(breakdown, key=lambda item: (-item["games"], -item["wins"], item["name"]))
+
+
+def _subheadline(best_story: GameStory | None, wins: int, losses: int, draws: int) -> str:
+    parts = [f"Record: {wins}W - {losses}L - {draws}D."]
     if best_story:
         parts.append(f"Best story: {_story_label(best_story.primary_story)}.")
     return " ".join(parts)
@@ -254,6 +293,7 @@ def _game_summary(game: Game | None) -> dict[str, Any] | None:
         return None
     return {
         "id": game.id,
+        "platform": game.platform,
         "result": game.result,
         "opening_name": game.opening_name,
         "opponent_username": game.opponent_username,
@@ -273,6 +313,7 @@ def _game_summary(game: Game | None) -> dict[str, Any] | None:
 
 def _session_share_card(recap: GameSession, links: list[GameSessionGame]) -> dict[str, Any]:
     username = _session_username(links)
+    games = [link.game for link in links if link.game is not None]
     return {
         "kind": "session_recap",
         "template": "session_recap_square_v1",
@@ -283,6 +324,7 @@ def _session_share_card(recap: GameSession, links: list[GameSessionGame]) -> dic
             "games_count": recap.games_count,
             "best_story": _story_label(recap.best_story_type),
             "most_common_opening": recap.most_common_opening,
+            "openings": _opening_breakdown(games),
             "rating_delta": recap.rating_delta,
         },
     }

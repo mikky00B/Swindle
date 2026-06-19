@@ -60,6 +60,15 @@ export type LichessStatus = {
   connected_at?: string | null;
 };
 
+export type ChessComStatus = {
+  connected: boolean;
+  platform: "chesscom";
+  platform_username?: string | null;
+  platform_user_id?: string | null;
+  last_synced_at?: string | null;
+  connected_at?: string | null;
+};
+
 export type ImportResponse = {
   imported: number;
   duplicates: number;
@@ -99,6 +108,7 @@ export type JournalGame = {
 
 export type SessionGameSummary = {
   id: string;
+  platform: string;
   result: string;
   opening_name?: string | null;
   opponent_username?: string | null;
@@ -151,14 +161,26 @@ export type SessionShareCardData = {
     games_count: number;
     best_story?: string | null;
     most_common_opening?: string | null;
+    openings?: SessionOpeningSummary[];
     rating_delta?: number | null;
   };
 };
 
 export type SessionDetail = SessionSummary & {
   games: SessionGameSummary[];
+  openings?: SessionOpeningSummary[];
   best_game?: SessionGameSummary | null;
   share_card?: SessionShareCardData;
+};
+
+export type SessionOpeningSummary = {
+  name: string;
+  games: number;
+  wins: number;
+  losses: number;
+  draws: number;
+  record: string;
+  win_rate: number;
 };
 
 export type GameAnalysisMetrics = {

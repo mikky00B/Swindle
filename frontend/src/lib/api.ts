@@ -1,4 +1,5 @@
 import type {
+  ChessComStatus,
   GameDebug,
   FeedResponse,
   ImportResponse,
@@ -84,6 +85,40 @@ export async function importLatestLichessGames(): Promise<ImportResponse> {
     headers: makeHeaders(),
   });
   return readJson(response, "Could not import Lichess games");
+}
+
+export async function getChessComStatus(): Promise<ChessComStatus> {
+  const response = await fetch(`${API_BASE}/integrations/chesscom/status`, {
+    headers: makeHeaders(),
+  });
+  return readJson(response, "Could not load Chess.com status");
+}
+
+export async function addChessComUsername(username: string): Promise<ChessComStatus> {
+  const response = await fetch(`${API_BASE}/integrations/chesscom/link`, {
+    method: "POST",
+    headers: makeHeaders({
+      "Content-Type": "application/json",
+    }),
+    body: JSON.stringify({ username }),
+  });
+  return readJson(response, "Could not add Chess.com username");
+}
+
+export async function disconnectChessCom(): Promise<void> {
+  const response = await fetch(`${API_BASE}/integrations/chesscom/disconnect`, {
+    method: "POST",
+    headers: makeHeaders(),
+  });
+  await readJson(response, "Could not remove Chess.com username");
+}
+
+export async function importLatestChessComGames(): Promise<ImportResponse> {
+  const response = await fetch(`${API_BASE}/games/import/chesscom`, {
+    method: "POST",
+    headers: makeHeaders(),
+  });
+  return readJson(response, "Could not import Chess.com games");
 }
 
 export async function listJournalGames(): Promise<JournalGame[]> {

@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
 
 import {
   FEED_EMPTY_MESSAGE,
@@ -32,6 +33,19 @@ assert.equal(nav.find((item) => item.label === "Profile")?.href, "/profile/Cleve
 assert.equal(nav.find((item) => item.label === "Feed")?.active, true);
 assert.equal(navItems("post", { platform_username: "Clevermike02" }).find((item) => item.label === "Feed")?.active, true);
 assert.equal(navItems("journal", null).find((item) => item.label === "Profile")?.disabled, true);
+
+const appSource = readFileSync(new URL("../src/App.tsx", import.meta.url), "utf8");
+const cssSource = readFileSync(new URL("../src/styles.css", import.meta.url), "utf8");
+
+assert.match(appSource, /function TopNav/);
+assert.match(appSource, /const \[mobileMenuOpen, setMobileMenuOpen\]/);
+assert.match(appSource, /className="top-menu-toggle"/);
+assert.match(appSource, /aria-expanded=\{mobileMenuOpen\}/);
+assert.match(appSource, /view-tabs is-open/);
+assert.match(cssSource, /\.top-menu-toggle\s*\{[^}]*display: none;/s);
+assert.match(cssSource, /@media \(max-width: 768px\)[\s\S]*\.top-menu-toggle\s*\{[^}]*display: inline-flex;/);
+assert.match(cssSource, /@media \(max-width: 768px\)[\s\S]*\.view-tabs\s*\{[^}]*display: none;/);
+assert.match(cssSource, /@media \(max-width: 768px\)[\s\S]*\.view-tabs\.is-open\s*\{[^}]*display: grid;/);
 
 const feed: FeedResponse = {
   items: [post("followed-post"), post("other-post")],

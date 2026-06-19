@@ -18,9 +18,9 @@ export function ShareCardRenderer({ card, theme = "classic", size = "square", sh
   const dimensions = CARD_SIZES[normalizedSize];
   const detail = [
     card.player.username,
+    platformLabel(card.game.platform),
     card.game.speed,
     card.game.time_control,
-    card.game.platform,
   ].filter(Boolean);
   const headlineClass = getHeadlineSizeClass(card.story.headline);
 
@@ -70,7 +70,7 @@ export function ShareCardRenderer({ card, theme = "classic", size = "square", sh
       </section>
 
       <footer className="card-footer">
-        <span>lichess story card</span>
+        <span>{platformStoryCardLabel(card.game.platform)} story card</span>
         <strong>swindle.app/{card.player.username}</strong>
       </footer>
     </article>
@@ -89,4 +89,16 @@ export function getHeadlineSizeClass(headline: string): string {
     return "headline headline-medium";
   }
   return "headline headline-large";
+}
+
+function platformLabel(platform?: string | null): string {
+  if (platform === "chesscom") return "Chess.com";
+  if (platform === "lichess") return "Lichess";
+  return platform ?? "";
+}
+
+function platformStoryCardLabel(platform?: string | null): string {
+  if (platform === "chesscom") return "chess.com";
+  if (platform === "lichess") return "lichess";
+  return platform ?? "chess";
 }

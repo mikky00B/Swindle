@@ -371,6 +371,8 @@ function signature(fen: string, orientation: "white" | "black"): string[] {
 
 {
   const shareCardSource = readFileSync(new URL("../src/components/cards/ShareCard.tsx", import.meta.url), "utf8");
+  const chessBoardSource = readFileSync(new URL("../src/components/chess/ChessBoard.tsx", import.meta.url), "utf8");
+  const cssSource = readFileSync(new URL("../src/styles.css", import.meta.url), "utf8");
   const appSource = readFileSync(new URL("../src/App.tsx", import.meta.url), "utf8");
 
   assert.equal(shareCardSource.includes("board-debug"), false);
@@ -378,6 +380,12 @@ function signature(fen: string, orientation: "white" | "black"): string[] {
   assert.equal(shareCardSource.includes("getBoardOrientation"), false);
   assert.equal(shareCardSource.includes('orientation === "black"'), false);
   assert.equal(shareCardSource.includes("<ChessBoard"), true);
+  assert.equal(chessBoardSource.includes("PIECE_PALETTES"), true);
+  assert.equal(chessBoardSource.includes('fill: "#fbfaf2"'), true);
+  assert.equal(chessBoardSource.includes('fill: "#202820"'), true);
+  assert.equal(chessBoardSource.includes('className="piece-fill"'), false);
+  assert.equal(cssSource.includes("--piece-fill"), false);
+  assert.equal(cssSource.includes("--piece-outline"), false);
   assert.ok((appSource.match(/<ShareCard\s/g) ?? []).length >= 2);
 }
 
