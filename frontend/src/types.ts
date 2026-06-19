@@ -146,6 +146,8 @@ export type SessionSummary = {
   long_grind_count?: number;
   giant_slayer_count?: number;
   turning_point_count?: number;
+  openings?: SessionOpeningSummary[];
+  rating_tracks?: SessionRatingTrack[];
 };
 
 export type SessionShareCardData = {
@@ -181,6 +183,18 @@ export type SessionOpeningSummary = {
   draws: number;
   record: string;
   win_rate: number;
+};
+
+export type SessionRatingTrack = {
+  platform: string;
+  speed?: string | null;
+  explicit_delta: number;
+  has_explicit: boolean;
+  first_rating?: number | null;
+  last_rating?: number | null;
+  first_played_at?: string | null;
+  last_played_at?: string | null;
+  inferred_delta?: number | null;
 };
 
 export type GameAnalysisMetrics = {

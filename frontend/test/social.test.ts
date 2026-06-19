@@ -43,8 +43,10 @@ assert.match(appSource, /className="top-menu-toggle"/);
 assert.match(appSource, /aria-expanded=\{mobileMenuOpen\}/);
 assert.match(appSource, /view-tabs is-open/);
 assert.match(cssSource, /\.top-menu-toggle\s*\{[^}]*display: none;/s);
+assert.match(cssSource, /@media \(max-width: 768px\)[\s\S]*\.top-nav\s*\{[\s\S]*display: grid;[\s\S]*grid-template-columns: minmax\(0, 1fr\) auto;/);
 assert.match(cssSource, /@media \(max-width: 768px\)[\s\S]*\.top-menu-toggle\s*\{[^}]*display: inline-flex;/);
 assert.match(cssSource, /@media \(max-width: 768px\)[\s\S]*\.view-tabs\s*\{[^}]*display: none;/);
+assert.match(cssSource, /@media \(max-width: 768px\)[\s\S]*\.view-tabs\s*\{[\s\S]*grid-column: 1 \/ -1;/);
 assert.match(cssSource, /@media \(max-width: 768px\)[\s\S]*\.view-tabs\.is-open\s*\{[^}]*display: grid;/);
 
 const feed: FeedResponse = {

@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
 
 import {
   absoluteUrl,
@@ -11,6 +12,9 @@ import {
   profileSlugForProfile,
   publishButtonLabel,
 } from "../src/lib/publicLinks.ts";
+
+const appSource = readFileSync(new URL("../src/App.tsx", import.meta.url), "utf8");
+const cssSource = readFileSync(new URL("../src/styles.css", import.meta.url), "utf8");
 
 assert.equal(profilePath("Clevermike02"), "/profile/Clevermike02");
 assert.equal(profilePath("space user"), "/profile/space%20user");
@@ -76,5 +80,13 @@ assert.equal(
   }))),
   "http://localhost:5173/profile/Clevermike02",
 );
+
+assert.match(appSource, /className="public-post-page"/);
+assert.match(appSource, /className="public-card-frame"/);
+assert.match(cssSource, /\.public-post-page\s*\{[\s\S]*grid-template-columns: minmax\(320px, 560px\) minmax\(280px, 1fr\);[\s\S]*min-width: 0;/);
+assert.match(cssSource, /\.public-card-frame\s*\{[\s\S]*max-width: 100%;[\s\S]*min-width: 0;/);
+assert.match(cssSource, /\.public-post-meta\s*\{[\s\S]*min-width: 0;/);
+assert.match(cssSource, /@media \(max-width: 768px\)[\s\S]*\.public-post-page\s*\{[\s\S]*grid-template-columns: minmax\(0, 1fr\);[\s\S]*overflow-x: hidden;/);
+assert.match(cssSource, /@media \(max-width: 768px\)[\s\S]*\.public-card-frame,[\s\S]*\.public-post-meta,[\s\S]*\.comments-panel,[\s\S]*\.comment-form,[\s\S]*\.comment-list\s*\{[\s\S]*max-width: 100%;[\s\S]*min-width: 0;/);
 
 console.log("public link helpers ok");

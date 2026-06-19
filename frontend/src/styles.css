@@ -3,6 +3,8 @@
   background: #f6f3ec;
   font-family:
     Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  max-width: 100%;
+  overflow-x: hidden;
 }
 
 * {
@@ -11,6 +13,13 @@
 
 body {
   margin: 0;
+  max-width: 100%;
+  overflow-x: hidden;
+}
+
+#root {
+  min-width: 0;
+  max-width: 100%;
 }
 
 button,
@@ -20,6 +29,8 @@ textarea {
 }
 
 .app-shell {
+  width: 100%;
+  max-width: 100%;
   min-height: 100vh;
   padding: 32px;
 }
@@ -590,6 +601,41 @@ button.sample-button {
   gap: 10px;
 }
 
+.recap-window-tabs {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.recap-window-tabs button {
+  display: grid;
+  gap: 2px;
+  min-height: 54px;
+  padding: 9px 10px;
+  border: 1px solid #d8ded6;
+  border-radius: 8px;
+  background: #ffffff;
+  color: #17201b;
+  text-align: left;
+}
+
+.recap-window-tabs button.is-active {
+  border-color: #17201b;
+  background: #dff365;
+}
+
+.recap-window-tabs span {
+  font-size: 13px;
+  font-weight: 950;
+}
+
+.recap-window-tabs small {
+  color: #657169;
+  font-size: 11px;
+  font-weight: 800;
+  line-height: 1.15;
+}
+
 .session-card,
 .suggested-card {
   display: grid;
@@ -606,6 +652,91 @@ button.sample-button {
 
 .session-card {
   cursor: default;
+}
+
+.session-window-card > p {
+  margin: 0;
+  color: #526159;
+  font-size: 13px;
+  font-weight: 750;
+  line-height: 1.35;
+}
+
+.recap-window-details {
+  display: grid;
+  gap: 12px;
+  padding-top: 4px;
+}
+
+.recap-window-details section {
+  display: grid;
+  gap: 8px;
+  min-width: 0;
+}
+
+.recap-detail-heading,
+.recap-opening-row,
+.recap-day-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 6px 10px;
+  align-items: center;
+}
+
+.recap-detail-heading {
+  color: #657169;
+  font-size: 11px;
+  font-weight: 950;
+  text-transform: uppercase;
+}
+
+.recap-window-details p {
+  margin: 0;
+  color: #657169;
+  font-size: 13px;
+  font-weight: 800;
+}
+
+.recap-opening-list,
+.recap-day-list {
+  display: grid;
+  gap: 6px;
+}
+
+.recap-opening-row,
+.recap-day-row {
+  padding: 9px;
+  border: 1px solid #d8ded6;
+  border-radius: 8px;
+  background: #ffffff;
+}
+
+.recap-opening-row span,
+.recap-day-row span {
+  min-width: 0;
+  overflow: hidden;
+  font-size: 13px;
+  font-weight: 900;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.recap-opening-row small,
+.recap-day-row small {
+  grid-column: 1 / -1;
+  color: #657169;
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.recap-opening-row strong,
+.recap-day-row a {
+  font-size: 12px;
+  font-weight: 950;
+}
+
+.recap-day-row a {
+  color: #17201b;
 }
 
 .session-card:hover,
@@ -956,11 +1087,12 @@ button.filter-tab.is-active {
 
 .responsive-card-preview {
   width: 100%;
+  max-width: 100%;
   overflow: hidden;
 }
 
 .responsive-card-stage {
-  width: var(--card-width);
+  width: calc(var(--card-width) * var(--card-scale));
   height: calc(var(--card-height) * var(--card-scale));
   transform: scale(var(--card-scale));
   transform-origin: top left;
@@ -1642,6 +1774,7 @@ button.filter-tab.is-active {
 }
 
 .public-shell {
+  width: 100%;
   max-width: 1180px;
   margin: 0 auto;
 }
@@ -1945,10 +2078,13 @@ button.filter-tab.is-active {
   grid-template-columns: minmax(320px, 560px) minmax(280px, 1fr);
   gap: 26px;
   align-items: start;
+  min-width: 0;
 }
 
 .public-card-frame {
   width: min(560px, 100%);
+  max-width: 100%;
+  min-width: 0;
   overflow: visible;
   border: 1px solid #ded7c9;
   border-radius: 8px;
@@ -1956,10 +2092,13 @@ button.filter-tab.is-active {
 }
 
 .public-card-frame .responsive-card-preview {
+  width: 100%;
+  max-width: 100%;
   border-radius: 8px;
 }
 
 .public-post-meta {
+  min-width: 0;
   display: grid;
   gap: 16px;
   padding: 22px;
@@ -1969,9 +2108,11 @@ button.filter-tab.is-active {
 }
 
 .public-post-meta h1 {
+  max-width: 100%;
   margin: 0;
   font-size: 30px;
   line-height: 1.05;
+  overflow-wrap: anywhere;
 }
 
 .public-post-meta dl {
@@ -1981,6 +2122,7 @@ button.filter-tab.is-active {
 }
 
 .public-post-meta dl div {
+  min-width: 0;
   display: flex;
   justify-content: space-between;
   gap: 12px;
@@ -2001,9 +2143,11 @@ button.filter-tab.is-active {
 }
 
 .public-post-meta dd {
+  min-width: 0;
   margin: 0;
   text-align: right;
   font-weight: 800;
+  overflow-wrap: anywhere;
 }
 
 .comments-panel {
@@ -2107,6 +2251,7 @@ button.filter-tab.is-active {
   display: grid;
   grid-template-columns: minmax(0, 1fr) minmax(360px, 520px);
   gap: 28px;
+  width: 100%;
   max-width: 1280px;
   margin: 0 auto;
   align-items: start;
@@ -2114,22 +2259,45 @@ button.filter-tab.is-active {
 
 .session-detail-main,
 .session-detail-card {
+  min-width: 0;
   display: grid;
   gap: 18px;
 }
 
-.session-detail-main h1 {
+.session-detail-hero {
+  display: grid;
+  gap: 10px;
+  max-width: 760px;
+  min-width: 0;
+  overflow: visible;
+}
+
+.session-detail-kicker {
+  max-width: 100%;
+  margin: 0;
+  color: #526159;
+  font-size: 13px;
+  font-weight: 950;
+  line-height: 1.2;
+  text-transform: uppercase;
+  overflow-wrap: anywhere;
+}
+
+.session-detail-hero h1 {
   max-width: 760px;
   margin: 0;
   font-size: 44px;
   line-height: 1.05;
+  overflow-wrap: anywhere;
 }
 
-.session-detail-main p {
+.session-detail-hero p:not(.session-detail-kicker) {
   max-width: 720px;
   margin: 0;
   color: #526159;
   font-weight: 700;
+  line-height: 1.45;
+  overflow-wrap: anywhere;
 }
 
 .session-detail-stats {
@@ -2532,10 +2700,13 @@ button.filter-tab.is-active {
 
 .export-stage {
   position: fixed;
-  left: -200vw;
+  left: 0;
   top: 0;
-  width: var(--export-width, 1080px);
-  height: var(--export-height, 1080px);
+  z-index: -1;
+  width: 0;
+  height: 0;
+  overflow: hidden;
+  pointer-events: none;
 }
 
 .export-stage article {
@@ -2620,6 +2791,63 @@ button.filter-tab.is-active {
     grid-template-columns: 1fr;
   }
 
+  .session-detail-page,
+  .session-detail-main,
+  .session-detail-card,
+  .session-detail-card .responsive-card-preview,
+  .session-detail-card .preview-actions,
+  .session-detail-card .theme-selector,
+  .session-detail-card .size-selector {
+    width: 100%;
+    max-width: 100%;
+    min-width: 0;
+  }
+
+  .session-detail-page,
+  .session-detail-card {
+    overflow-x: hidden;
+  }
+
+  .session-detail-main {
+    gap: 18px;
+    align-content: start;
+  }
+
+  .session-detail-hero {
+    display: grid;
+    width: 100%;
+    max-width: 760px;
+    min-width: 0;
+    margin: 0;
+    overflow: visible;
+  }
+
+  .session-detail-kicker {
+    display: block;
+    max-width: 100%;
+    margin: 0;
+    line-height: 1.2;
+    white-space: normal;
+    overflow-wrap: anywhere;
+  }
+
+  .session-detail-hero h1 {
+    display: block;
+    max-width: 100%;
+    margin: 0;
+    font-size: 44px;
+    line-height: 1.05;
+    overflow-wrap: anywhere;
+  }
+
+  .session-detail-hero p:not(.session-detail-kicker) {
+    display: block;
+    max-width: 100%;
+    margin: 0;
+    line-height: 1.45;
+    overflow-wrap: anywhere;
+  }
+
   .profile-header {
     align-items: stretch;
     flex-direction: column;
@@ -2653,9 +2881,15 @@ button.filter-tab.is-active {
   }
 
   .top-nav {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
     align-items: center;
-    flex-direction: row;
-    flex-wrap: wrap;
+    gap: 14px;
+  }
+
+  .public-shell .top-nav > div {
+    min-width: 0;
+    max-width: 100%;
   }
 
   .landing-menu-toggle {
@@ -2729,10 +2963,6 @@ button.filter-tab.is-active {
     min-height: 82px;
   }
 
-  .top-nav {
-    gap: 14px;
-  }
-
   .top-menu-toggle {
     display: inline-flex;
     min-height: 42px;
@@ -2743,10 +2973,13 @@ button.filter-tab.is-active {
   }
 
   .top-nav h1 {
+    max-width: 100%;
     font-size: 26px;
+    overflow-wrap: anywhere;
   }
 
   .view-tabs {
+    grid-column: 1 / -1;
     display: none;
     width: 100%;
     grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -2896,5 +3129,103 @@ button.filter-tab.is-active {
   .detail-panel dl div,
   .debug-panel dl div {
     grid-template-columns: 96px minmax(0, 1fr);
+  }
+
+  .public-post-page {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr);
+    gap: 16px;
+    width: 100%;
+    max-width: 100%;
+    min-width: 0;
+    overflow-x: hidden;
+  }
+
+  .public-card-frame,
+  .public-post-meta,
+  .comments-panel,
+  .comment-form,
+  .comment-list {
+    width: 100%;
+    max-width: 100%;
+    min-width: 0;
+  }
+
+  .public-card-frame {
+    justify-self: stretch;
+  }
+
+  .public-post-meta {
+    padding: 16px;
+  }
+
+  .public-post-meta h1 {
+    font-size: clamp(24px, 7vw, 30px);
+    line-height: 1.12;
+    overflow-wrap: anywhere;
+  }
+
+  .public-post-meta dl div {
+    display: grid;
+    grid-template-columns: minmax(0, 0.42fr) minmax(0, 0.58fr);
+    align-items: start;
+  }
+
+  .public-post-meta dd {
+    text-align: right;
+  }
+
+  .public-post-meta .actions {
+    grid-template-columns: 1fr;
+  }
+
+  .comments-heading {
+    align-items: start;
+  }
+
+  .comment-item,
+  .comment-item p,
+  .comment-form label,
+  .comment-form textarea {
+    min-width: 0;
+    max-width: 100%;
+    overflow-wrap: anywhere;
+  }
+
+  .session-detail-page {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr);
+    gap: 16px;
+    overflow-x: hidden;
+  }
+
+  .session-detail-main,
+  .session-detail-card {
+    width: 100%;
+    max-width: 100%;
+    min-width: 0;
+  }
+
+  .session-detail-main {
+    gap: 18px;
+  }
+
+  .session-detail-card {
+    justify-items: stretch;
+  }
+
+  .session-detail-card .responsive-card-preview {
+    justify-self: stretch;
+    border-radius: 8px;
+  }
+
+  .session-detail-card .preview-actions {
+    width: 100%;
+    padding: 14px;
+  }
+
+  .session-detail-card .theme-options,
+  .session-detail-card .size-options {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 }
