@@ -151,7 +151,7 @@ def _card_for_game(session, game: Game | None) -> dict[str, Any] | None:
         parsed = _parsed_from_game(game)
         metrics = _metrics_from_model(game.metrics)
         story_schema = StorySchema.model_validate(_story_to_dict(game.story))
-        share_card = build_share_card_data(parsed, story_schema, metrics, _player_username(game))
+        share_card = build_share_card_data(parsed, story_schema, metrics, _player_username(game), game.platform)
         _update_story_model(game.story, share_card.story, share_card)
         session.flush()
         return share_card.model_dump(mode="json")
@@ -170,7 +170,7 @@ def reprocess_game(game_id: str, user_id: str, *, with_eval: bool = False) -> di
         parsed = _parsed_from_game(game)
         metrics = analyze_game_with_cloud_eval(parsed, session) if with_eval else _metrics_from_model(game.metrics)
         story = generate_story(parsed, metrics)
-        share_card = build_share_card_data(parsed, story, metrics, _player_username(game))
+        share_card = build_share_card_data(parsed, story, metrics, _player_username(game), game.platform)
 
         if with_eval:
             if game.metrics is None:
@@ -202,7 +202,7 @@ def debug_eval_game(game_id: str, user_id: str, eval_curve: list[Any], analysis_
         parsed = _parsed_from_game(game)
         metrics = metrics_from_mock_user_evals(parsed, eval_curve, analysis_status)
         story = generate_story(parsed, metrics)
-        share_card = build_share_card_data(parsed, story, metrics, _player_username(game))
+        share_card = build_share_card_data(parsed, story, metrics, _player_username(game), game.platform)
 
         if game.metrics is None:
             game.metrics = GameMetric(game_id=game.id)
@@ -569,6 +569,8 @@ def _share_card_needs_rebuild(data: dict[str, Any], model: Game) -> bool:
         return True
     game = data.get("game")
     if not isinstance(game, dict) or "user_color" not in game or "final_fen" not in game:
+        return True
+    if game.get("platform") != model.platform:
         return True
     metrics = data.get("metrics")
     if not isinstance(metrics, dict) or "eval_points" not in metrics or "analysis_status" not in metrics:

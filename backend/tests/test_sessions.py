@@ -14,7 +14,7 @@ from app.sessions.processor import rebuild_user_sessions
 BASE_TIME = datetime(2026, 6, 18, 18, 0, tzinfo=timezone.utc)
 
 
-def test_games_within_two_hours_group_into_one_session() -> None:
+def test_games_on_same_day_group_into_one_daily_recap() -> None:
     create_games("player", [("win", 0), ("loss", 70), ("draw", 115)])
 
     result = rebuild_user_sessions("player")
@@ -26,21 +26,29 @@ def test_games_within_two_hours_group_into_one_session() -> None:
         assert recap.games_count == 3
 
 
-def test_gap_greater_than_two_hours_creates_new_session() -> None:
+def test_large_gap_on_same_day_stays_in_one_daily_recap() -> None:
     create_games("player", [("win", 0), ("loss", 30), ("win", 190), ("draw", 220)])
+
+    result = rebuild_user_sessions("player")
+
+    assert result == {"sessions": 1}
+
+
+def test_different_days_create_separate_daily_recaps() -> None:
+    create_games("player", [("win", 0), ("loss", 190), ("draw", 1600)])
 
     result = rebuild_user_sessions("player")
 
     assert result == {"sessions": 2}
 
 
-def test_single_game_sessions_are_hidden_by_default() -> None:
-    create_games("player", [("win", 0), ("loss", 190), ("draw", 380)])
+def test_single_game_days_are_visible() -> None:
+    create_games("player", [("win", 0)])
 
     result = rebuild_user_sessions("player")
 
-    assert result == {"sessions": 0}
-    assert TestClient(app).get("/api/v1/sessions", headers=session("player")).json() == []
+    assert result == {"sessions": 1}
+    assert len(TestClient(app).get("/api/v1/sessions", headers=session("player")).json()) == 1
 
 
 def test_session_counts_win_rate_opening_and_rating_delta_are_computed() -> None:
@@ -64,6 +72,23 @@ def test_session_counts_win_rate_opening_and_rating_delta_are_computed() -> None
     assert recap["rating_delta"] == 4
 
 
+def test_daily_rating_delta_is_inferred_from_chesscom_rating_snapshots() -> None:
+    create_games(
+        "player",
+        [
+            ("win", 0, "Sicilian Defense", None, "daily_activity", 0.5, 1392),
+            ("loss", 20, "Italian Game", None, "daily_activity", 0.5, 1385),
+            ("win", 40, "French Defense", None, "daily_activity", 0.5, 1401),
+        ],
+        platform="chesscom",
+    )
+
+    rebuild_user_sessions("player")
+
+    recap = TestClient(app).get("/api/v1/sessions", headers=session("player")).json()[0]
+    assert recap["rating_delta"] == 9
+
+
 def test_clean_climb_mood_is_selected() -> None:
     create_games("player", [("win", 0), ("win", 10), ("win", 20), ("win", 30), ("loss", 40)])
 
@@ -73,13 +98,13 @@ def test_clean_climb_mood_is_selected() -> None:
     assert recap["mood"] == "Clean climb"
 
 
-def test_tilt_session_mood_is_selected() -> None:
+def test_tilt_day_mood_is_selected() -> None:
     create_games("player", [("loss", 0), ("loss", 10), ("loss", 20), ("loss", 30), ("win", 40)])
 
     rebuild_user_sessions("player")
 
     recap = TestClient(app).get("/api/v1/sessions", headers=session("player")).json()[0]
-    assert recap["mood"] == "Tilt session"
+    assert recap["mood"] == "Tilt day"
 
 
 def test_chaos_survived_mood_is_selected() -> None:
@@ -132,11 +157,27 @@ def test_session_detail_endpoint_returns_games() -> None:
     body = response.json()
     assert body["games_count"] == 2
     assert [game["result"] for game in body["games"]] == ["win", "loss"]
+    assert body["openings"][0]["name"] == "Sicilian Defense"
+    assert body["openings"][0]["record"] == "1W - 1L - 0D"
+    assert body["openings"][0]["win_rate"] == 0.5
     assert body["share_card"]["kind"] == "session_recap"
 
 
+def test_daily_recap_can_include_lichess_and_chesscom_games() -> None:
+    create_games("player", [("win", 0)], platform="lichess")
+    create_games("player", [("loss", 30)], platform="chesscom")
+
+    rebuild_user_sessions("player")
+    client = TestClient(app)
+    session_id = client.get("/api/v1/sessions", headers=session("player")).json()[0]["id"]
+    body = client.get(f"/api/v1/sessions/{session_id}", headers=session("player")).json()
+
+    assert body["games_count"] == 2
+    assert {game["platform"] for game in body["games"]} == {"lichess", "chesscom"}
+
+
 def test_session_share_card_endpoint_returns_recap_card_data() -> None:
-    create_games("player", [("win", 0), ("win", 10), ("loss", 20)])
+    create_games("player", [("win", 0, "Sicilian Defense", 4), ("win", 10, "Italian Game", 7), ("loss", 20, "Sicilian Defense", -8)])
     rebuild_user_sessions("player")
     client = TestClient(app)
     session_id = client.get("/api/v1/sessions", headers=session("player")).json()[0]["id"]
@@ -148,6 +189,26 @@ def test_session_share_card_endpoint_returns_recap_card_data() -> None:
     assert body["kind"] == "session_recap"
     assert body["session"]["games_count"] == 3
     assert body["stats"]["record"] == "2W - 1L - 0D"
+    assert body["stats"]["openings"] == [
+        {
+            "name": "Sicilian Defense",
+            "games": 2,
+            "wins": 1,
+            "losses": 1,
+            "draws": 0,
+            "record": "1W - 1L - 0D",
+            "win_rate": 0.5,
+        },
+        {
+            "name": "Italian Game",
+            "games": 1,
+            "wins": 1,
+            "losses": 0,
+            "draws": 0,
+            "record": "1W - 0L - 0D",
+            "win_rate": 1.0,
+        },
+    ]
 
 
 def session(user_id: str) -> dict[str, str]:
@@ -156,7 +217,14 @@ def session(user_id: str) -> dict[str, str]:
 
 def create_games(
     username: str,
-    specs: list[tuple[str, int] | tuple[str, int, str, int] | tuple[str, int, str, int, str] | tuple[str, int, str, int, str, float]],
+    specs: list[
+        tuple[str, int]
+        | tuple[str, int, str, int | None]
+        | tuple[str, int, str, int | None, str]
+        | tuple[str, int, str, int | None, str, float]
+        | tuple[str, int, str, int | None, str, float, int]
+    ],
+    platform: str = "lichess",
 ) -> None:
     now = BASE_TIME
     with get_session() as db:
@@ -165,11 +233,11 @@ def create_games(
             user = User(id=username, username=username, created_at=now, updated_at=now)
             db.add(user)
             db.flush()
-        account = db.scalar(select(ChessAccount).where(ChessAccount.user_id == user.id, ChessAccount.platform == "lichess"))
+        account = db.scalar(select(ChessAccount).where(ChessAccount.user_id == user.id, ChessAccount.platform == platform))
         if account is None:
             account = ChessAccount(
                 user_id=user.id,
-                platform="lichess",
+                platform=platform,
                 platform_user_id=username,
                 platform_username=username,
                 access_token_encrypted="token",
@@ -186,12 +254,13 @@ def create_games(
             rating_change = spec[3] if len(spec) >= 4 else 0
             story_type = spec[4] if len(spec) >= 5 else ("giant_slayer" if result == "win" else "daily_activity")
             interest = spec[5] if len(spec) >= 6 else 0.8
+            user_rating = spec[6] if len(spec) >= 7 else None
             played_at = BASE_TIME + timedelta(minutes=offset)
             game = Game(
                 user_id=user.id,
                 chess_account_id=account.id,
-                platform="lichess",
-                external_game_id=f"{username}-{index}",
+                platform=platform,
+                external_game_id=f"{username}-{platform}-{index}",
                 pgn="[Event \"Session\"]\n\n1. e4 e5 1-0",
                 raw_payload={},
                 white_username=username,
@@ -203,6 +272,7 @@ def create_games(
                 time_control="5+0",
                 opening_name=opening,
                 moves_count=24 + index,
+                user_rating_before=user_rating,
                 rating_change=rating_change,
                 played_at=played_at,
                 imported_at=played_at,

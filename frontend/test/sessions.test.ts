@@ -11,9 +11,9 @@ test("session route parses session detail urls", () => {
   assert.deepEqual(routeFromPath("/sessions/session-123"), { kind: "session", sessionId: "session-123" });
 });
 
-test("Recent Sessions section renders in journal source", () => {
-  assert.match(appSource, /Recent Sessions/);
-  assert.match(appSource, /No sessions yet\. Import more games to generate session recaps\./);
+test("Daily Recaps section renders in journal source", () => {
+  assert.match(appSource, /Daily Recaps/);
+  assert.match(appSource, /No daily recaps yet\. Import games to generate daily recaps\./);
 });
 
 test("session card shows mood headline record and export action", () => {
@@ -25,8 +25,11 @@ test("session card shows mood headline record and export action", () => {
 
 test("session detail route shows games and export button", () => {
   assert.match(appSource, /function SessionDetailPage/);
-  assert.match(appSource, /Games in session/);
-  assert.match(appSource, /Export session recap/);
+  assert.match(appSource, /games this day/);
+  assert.match(appSource, /Export daily recap/);
+  assert.match(appSource, /gameOpeningLabel\(game\)/);
+  assert.match(appSource, /Opening results today/);
+  assert.match(appSource, /formatPercent\(opening\.win_rate\)/);
 });
 
 test("session API helpers are available", () => {
@@ -40,6 +43,25 @@ test("session recap card data is typed", () => {
   assert.match(typesSource, /export type SessionSummary/);
   assert.match(typesSource, /export type SessionShareCardData/);
   assert.match(typesSource, /kind: "session_recap"/);
+  assert.match(typesSource, /platform: string;/);
+  assert.match(typesSource, /export type SessionOpeningSummary/);
+  assert.match(typesSource, /openings\?: SessionOpeningSummary\[\]/);
+});
+
+test("session recap card renders opening breakdown instead of one mixed opening stat", () => {
+  assert.match(appSource, /Openings today/);
+  assert.match(appSource, /card\.stats\.openings/);
+  assert.doesNotMatch(appSource, /<dt>Opening<\/dt>\s*<dd>\{card\.stats\.most_common_opening/);
+  assert.doesNotMatch(appSource, /session\.summary_subheadline \? <span>\{session\.summary_subheadline\}<\/span>/);
+});
+
+test("session recap card has size-specific layout safeguards", () => {
+  const stylesSource = readFileSync(new URL("../src/styles.css", import.meta.url), "utf8");
+  assert.match(stylesSource, /\.session-recap-card\.size-square|\.session-recap-card \{/);
+  assert.match(stylesSource, /\.session-recap-card\.size-story \.session-recap-opening-row/);
+  assert.match(stylesSource, /\.session-recap-card\.size-portrait \.session-recap-opening-row/);
+  assert.match(stylesSource, /\.session-recap-card\.size-landscape \.session-recap-openings/);
+  assert.match(stylesSource, /grid-row: 3;/);
 });
 
 test("mobile session rows have responsive CSS hooks", () => {

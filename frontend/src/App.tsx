@@ -5,10 +5,13 @@ import { LANDING_DEMO_CARDS } from "./data/demoCards";
 import {
   addComment,
   addKudos,
+  addChessComUsername,
   analyzeJournalGame,
   createStoryFromPgn,
+  disconnectChessCom,
   disconnectLichess,
   followProfile,
+  getChessComStatus,
   getImportedGameShareCard,
   getJournalGameDebug,
   getJournalGameDetail,
@@ -18,6 +21,7 @@ import {
   getSessionDetail,
   getSessionShareCard,
   ignoreSuggestedStory,
+  importLatestChessComGames,
   importLatestLichessGames,
   lichessConnectUrl,
   listComments,
@@ -73,6 +77,7 @@ import {
 } from "./lib/social";
 import { SAMPLE_CARDS, SAMPLE_PGN } from "./mockData";
 import type {
+  ChessComStatus,
   FeedResponse,
   GameDebug,
   JournalGame,
@@ -109,6 +114,8 @@ export function App() {
   const [pgn, setPgn] = useState(SAMPLE_PGN);
   const [card, setCard] = useState<ShareCardData>(SAMPLE_CARDS[0].card);
   const [lichessStatus, setLichessStatus] = useState<LichessStatus | null>(null);
+  const [chesscomStatus, setChesscomStatus] = useState<ChessComStatus | null>(null);
+  const [chesscomUsername, setChesscomUsername] = useState("");
   const [journal, setJournal] = useState<JournalGame[]>([]);
   const [suggestedStories, setSuggestedStories] = useState<JournalGame[]>([]);
   const [sessions, setSessions] = useState<SessionSummary[]>([]);
@@ -152,8 +159,10 @@ export function App() {
 
   async function initializeApp(options: { autoImportIfEmpty?: boolean } = {}) {
     try {
-      const [nextStatus, games, suggestions, nextSessions] = await loadJournalState();
+      const [nextStatus, nextChesscomStatus, games, suggestions, nextSessions] = await loadJournalState();
       setLichessStatus(nextStatus);
+      setChesscomStatus(nextChesscomStatus);
+      setChesscomUsername(nextChesscomStatus.platform_username ?? "");
       setJournal(games);
       setSuggestedStories(suggestions);
       setSessions(nextSessions);
@@ -184,8 +193,10 @@ export function App() {
 
   async function refreshLichessState() {
     try {
-      const [nextStatus, games, suggestions, nextSessions] = await loadJournalState();
+      const [nextStatus, nextChesscomStatus, games, suggestions, nextSessions] = await loadJournalState();
       setLichessStatus(nextStatus);
+      setChesscomStatus(nextChesscomStatus);
+      setChesscomUsername(nextChesscomStatus.platform_username ?? "");
       setJournal(games);
       setSuggestedStories(suggestions);
       setSessions(nextSessions);
@@ -238,6 +249,56 @@ export function App() {
       }
     } catch (error) {
       setStatus(error instanceof Error ? error.message : "Could not import games");
+    }
+  }
+
+  async function handleAddChessComUsername(event?: FormEvent) {
+    event?.preventDefault();
+    const nextUsername = chesscomUsername.trim();
+    if (!nextUsername) {
+      setStatus("Enter a Chess.com username first");
+      return;
+    }
+    setStatus("Adding Chess.com username...");
+    try {
+      const nextStatus = await addChessComUsername(nextUsername);
+      setChesscomStatus(nextStatus);
+      setChesscomUsername(nextStatus.platform_username ?? nextUsername);
+      setStatus(`Chess.com username added: ${nextStatus.platform_username ?? nextUsername}`);
+    } catch (error) {
+      setStatus(error instanceof Error ? error.message : "Could not add Chess.com username");
+    }
+  }
+
+  async function handleImportChessComGames() {
+    setStatus("Importing Chess.com games...");
+    try {
+      const result = await importLatestChessComGames();
+      const [games, suggestions, nextSessions] = await loadJournalLists();
+      const nextChesscomStatus = await getChessComStatus().catch(() => chesscomStatus);
+      setJournal(games);
+      setSuggestedStories(suggestions);
+      setSessions(nextSessions);
+      if (nextChesscomStatus) setChesscomStatus(nextChesscomStatus);
+      setStatus(importSummary(result));
+      if (games.length > 0) {
+        await loadGameAndCard(games[0].id);
+      }
+    } catch (error) {
+      setStatus(error instanceof Error ? error.message : "Could not import Chess.com games");
+    }
+  }
+
+  async function handleDisconnectChessCom() {
+    setStatus("Removing Chess.com username...");
+    try {
+      await disconnectChessCom();
+      const nextStatus = await getChessComStatus();
+      setChesscomStatus(nextStatus);
+      setChesscomUsername("");
+      setStatus("Chess.com username removed");
+    } catch (error) {
+      setStatus(error instanceof Error ? error.message : "Could not remove Chess.com username");
     }
   }
 
@@ -369,10 +430,15 @@ export function App() {
     }
   }
 
-  async function loadJournalState(): Promise<[LichessStatus, JournalGame[], JournalGame[], SessionSummary[]]> {
-    const [nextStatus, games, nextSessions] = await Promise.all([getLichessStatus(), listJournalGames(), listSessions().catch(() => [])]);
+  async function loadJournalState(): Promise<[LichessStatus, ChessComStatus, JournalGame[], JournalGame[], SessionSummary[]]> {
+    const [nextStatus, nextChesscomStatus, games, nextSessions] = await Promise.all([
+      getLichessStatus(),
+      getChessComStatus(),
+      listJournalGames(),
+      listSessions().catch(() => []),
+    ]);
     const suggestions = await listSuggestedStories().catch(() => []);
-    return [nextStatus, games, suggestions, nextSessions];
+    return [nextStatus, nextChesscomStatus, games, suggestions, nextSessions];
   }
 
   async function loadJournalLists(): Promise<[JournalGame[], JournalGame[], SessionSummary[]]> {
@@ -382,33 +448,33 @@ export function App() {
   }
 
   async function handleRebuildSessions() {
-    setStatus("Rebuilding session recaps...");
+    setStatus("Rebuilding daily recaps...");
     try {
       const result = await rebuildSessions();
       setSessions(await listSessions());
-      setStatus(`Rebuilt ${result.sessions} session recap${result.sessions === 1 ? "" : "s"}.`);
+      setStatus(`Rebuilt ${result.sessions} daily recap${result.sessions === 1 ? "" : "s"}.`);
     } catch (error) {
       setStatus(error instanceof Error ? error.message : "Could not rebuild sessions");
     }
   }
 
   async function handleExportSession(sessionId: string) {
-    setStatus("Exporting session recap...");
+    setStatus("Exporting daily recap...");
     try {
       const recapCard = await getSessionShareCard(sessionId);
       setSessionExportCard(recapCard);
       await nextFrame();
       if (!sessionCardRef.current) {
-        throw new Error("Session recap card is not ready");
+        throw new Error("Daily recap card is not ready");
       }
       await exportElementAsPng(
         sessionCardRef.current,
         sessionExportFileName(recapCard, selectedTheme, selectedSize),
         CARD_SIZES[selectedSize],
       );
-      setStatus("Session recap exported");
+      setStatus("Daily recap exported");
     } catch (error) {
-      setStatus(error instanceof Error ? error.message : "Session recap export failed");
+      setStatus(error instanceof Error ? error.message : "Daily recap export failed");
     }
   }
 
@@ -444,7 +510,7 @@ export function App() {
 
   return (
     <main className="app-shell">
-      <TopNav title="Lichess story cards" activePage="journal" lichessStatus={lichessStatus}>
+      <TopNav title="Chess story cards" activePage="journal" lichessStatus={lichessStatus}>
         {import.meta.env.DEV ? (
           <button
             type="button"
@@ -460,6 +526,8 @@ export function App() {
           {activeView === "journal" ? (
             <JournalControls
               lichessStatus={lichessStatus}
+              chesscomStatus={chesscomStatus}
+              chesscomUsername={chesscomUsername}
               journal={journal}
               suggestedStories={suggestedStories}
               sessions={sessions}
@@ -473,6 +541,10 @@ export function App() {
               showDebug={showDebug}
               onFilterChange={setJournalFilter}
               onSearchChange={setJournalSearch}
+              onChessComUsernameChange={setChesscomUsername}
+              onAddChessComUsername={handleAddChessComUsername}
+              onImportChessComGames={handleImportChessComGames}
+              onDisconnectChessCom={handleDisconnectChessCom}
               onToggleDebug={() => setShowDebug(!showDebug)}
               selectedTheme={selectedTheme}
               selectedSize={selectedSize}
@@ -547,9 +619,9 @@ export function App() {
                       onPublish={handlePublishSelectedGame}
                       onUnpublish={handleUnpublishSelectedGame}
                     />
-                    {lichessUrl(selectedGame.external_game_id) ? (
-                      <a className="button-link" href={lichessUrl(selectedGame.external_game_id)} target="_blank" rel="noreferrer">
-                        Open on Lichess
+                    {gameUrl(selectedGame) ? (
+                      <a className="button-link" href={gameUrl(selectedGame)} target="_blank" rel="noreferrer">
+                        Open on {platformLabel(selectedGame.platform)}
                       </a>
                     ) : null}
                   </>
@@ -600,6 +672,8 @@ export function App() {
 
 type JournalControlsProps = {
   lichessStatus: LichessStatus | null;
+  chesscomStatus: ChessComStatus | null;
+  chesscomUsername: string;
   journal: JournalGame[];
   suggestedStories: JournalGame[];
   sessions: SessionSummary[];
@@ -615,6 +689,10 @@ type JournalControlsProps = {
   selectedSize: ShareCardSize;
   onFilterChange: (filter: JournalFilter) => void;
   onSearchChange: (value: string) => void;
+  onChessComUsernameChange: (value: string) => void;
+  onAddChessComUsername: (event?: FormEvent) => void;
+  onImportChessComGames: () => void;
+  onDisconnectChessCom: () => void;
   onToggleDebug: () => void;
   onThemeChange: (theme: ShareCardTheme) => void;
   onSizeChange: (size: ShareCardSize) => void;
@@ -637,6 +715,8 @@ type JournalControlsProps = {
 
 const JOURNAL_FILTERS: Array<{ value: JournalFilter; label: string }> = [
   { value: "all", label: "All" },
+  { value: "lichess", label: "Lichess" },
+  { value: "chesscom", label: "Chess.com" },
   { value: "wins", label: "Wins" },
   { value: "losses", label: "Losses" },
   { value: "draws", label: "Draws" },
@@ -647,6 +727,8 @@ const JOURNAL_FILTERS: Array<{ value: JournalFilter; label: string }> = [
 
 function JournalControls({
   lichessStatus,
+  chesscomStatus,
+  chesscomUsername,
   journal,
   suggestedStories,
   sessions,
@@ -662,6 +744,10 @@ function JournalControls({
   selectedSize,
   onFilterChange,
   onSearchChange,
+  onChessComUsernameChange,
+  onAddChessComUsername,
+  onImportChessComGames,
+  onDisconnectChessCom,
   onToggleDebug,
   onThemeChange,
   onSizeChange,
@@ -687,12 +773,12 @@ function JournalControls({
   return (
     <>
       <div className="panel-heading">
-        <p>Lichess story cards</p>
+        <p>Chess story cards</p>
         <h1>Private chess journal</h1>
       </div>
 
       <div className="account-box">
-        <span>Account</span>
+        <span>Lichess</span>
         <strong>{lichessStatus?.connected ? lichessStatus.platform_username : "Not connected"}</strong>
       </div>
       {import.meta.env.DEV ? (
@@ -718,6 +804,32 @@ function JournalControls({
           Refresh
         </button>
       </div>
+
+      <form className="account-box chesscom-box" onSubmit={onAddChessComUsername}>
+        <span>Chess.com</span>
+        <strong>{chesscomStatus?.connected ? chesscomStatus.platform_username : "No username added"}</strong>
+        <p>Chess.com imports use public game archives. No password required.</p>
+        <label>
+          Chess.com username
+          <input
+            value={chesscomUsername}
+            onChange={(event) => onChessComUsernameChange(event.target.value)}
+            placeholder="Chess.com username"
+          />
+        </label>
+        {chesscomStatus?.last_synced_at ? <small>Last imported {formatDate(chesscomStatus.last_synced_at)}</small> : null}
+        <div className="actions">
+          <button type="submit">Add Chess.com username</button>
+          <button type="button" className="secondary" onClick={onImportChessComGames} disabled={!chesscomStatus?.connected}>
+            Import Chess.com games
+          </button>
+          {chesscomStatus?.connected ? (
+            <button type="button" className="ghost" onClick={onDisconnectChessCom}>
+              Remove
+            </button>
+          ) : null}
+        </div>
+      </form>
 
       <MobileJournalPreview
         selectedGame={selectedGame}
@@ -856,7 +968,10 @@ function JournalControls({
               key={game.id} 
               onClick={() => onSelectGame(game.id)}
             >
-              <span>{game.result.toUpperCase()} / {game.moves_count} moves / {game.processing_status}</span>
+              <span>
+                <span className={`platform-badge platform-${game.platform}`}>{platformLabel(game.platform)}</span>
+                {game.result.toUpperCase()} / {game.moves_count} moves / {game.processing_status}
+              </span>
               <strong>{game.story.badge_label}</strong>
               <em>{game.opening_name ?? "Unknown opening"}</em>
               <small>{game.opponent_username ?? "Unknown opponent"}</small>
@@ -883,7 +998,7 @@ function JournalControls({
               <dd>{selectedGame.result}</dd>
             </div>
             <div>
-              <dt>Speed</dt>
+              <dt>Format</dt>
               <dd>{selectedGame.speed ?? "Unknown"}</dd>
             </div>
             <div>
@@ -991,24 +1106,24 @@ function RecentSessionsSection({
   onExport: (sessionId: string) => void;
 }) {
   return (
-    <section className="sessions-section" aria-label="Recent Sessions">
+    <section className="sessions-section" aria-label="Daily Recaps">
       <div className="section-heading">
         <div>
-          <p>Recent Sessions</p>
+          <p>Daily Recaps</p>
           <h2>{sessions.length} recap{sessions.length === 1 ? "" : "s"}</h2>
         </div>
         <button type="button" className="secondary compact-button" onClick={onRebuild}>
-          Rebuild sessions
+          Rebuild daily recaps
         </button>
       </div>
       {sessions.length === 0 ? (
-        <p className="empty-state">No sessions yet. Import more games to generate session recaps.</p>
+        <p className="empty-state">No daily recaps yet. Import games to generate daily recaps.</p>
       ) : (
         <div className="session-list">
           {sessions.map((session) => (
             <article className="session-card" key={session.id}>
               <div className="session-card-top">
-                <span className="story-chip">{session.mood ?? "Session recap"}</span>
+                <span className="story-chip">{session.mood ?? "Daily recap"}</span>
                 <strong>{session.games_count} games</strong>
               </div>
               <h3>{session.summary_headline}</h3>
@@ -1026,7 +1141,7 @@ function RecentSessionsSection({
                   <dd>{session.most_common_opening ?? "Mixed openings"}</dd>
                 </div>
                 <div>
-                  <dt>Rating</dt>
+                  <dt>Rating +/-</dt>
                   <dd>{formatRatingDelta(session.rating_delta)}</dd>
                 </div>
               </dl>
@@ -1099,13 +1214,13 @@ function MobileJournalPreview({
             <button type="button" className="secondary" onClick={onExport} disabled={!selectedCard}>
               Export PNG
             </button>
-            {selectedGame && lichessUrl(selectedGame.external_game_id) ? (
-              <a className="button-link secondary-link" href={lichessUrl(selectedGame.external_game_id)} target="_blank" rel="noreferrer">
-                Open on Lichess
+            {selectedGame && gameUrl(selectedGame) ? (
+              <a className="button-link secondary-link" href={gameUrl(selectedGame)} target="_blank" rel="noreferrer">
+                Open on {platformLabel(selectedGame.platform)}
               </a>
             ) : (
               <button type="button" className="secondary" disabled>
-                Open on Lichess
+                Open game
               </button>
             )}
           </>
@@ -1125,13 +1240,13 @@ function MobileJournalPreview({
             <button type="button" onClick={onPublish} disabled={!selectedGame?.story.id}>
               Publish
             </button>
-            {selectedGame && lichessUrl(selectedGame.external_game_id) ? (
-              <a className="button-link secondary-link" href={lichessUrl(selectedGame.external_game_id)} target="_blank" rel="noreferrer">
-                Open on Lichess
+            {selectedGame && gameUrl(selectedGame) ? (
+              <a className="button-link secondary-link" href={gameUrl(selectedGame)} target="_blank" rel="noreferrer">
+                Open on {platformLabel(selectedGame.platform)}
               </a>
             ) : (
               <button type="button" className="secondary" disabled>
-                Open on Lichess
+                Open game
               </button>
             )}
           </>
@@ -1255,12 +1370,11 @@ function SessionRecapCard({
     >
       <div className="session-recap-brand">
         <span>Swindle</span>
-        <strong>Session Recap</strong>
+        <strong>Daily Recap</strong>
       </div>
       <div className="session-recap-main">
-        <p>{session.mood ?? "Session recap"}</p>
+        <p>{session.mood ?? "Daily recap"}</p>
         <h1>{session.summary_headline}</h1>
-        {session.summary_subheadline ? <span>{session.summary_subheadline}</span> : null}
       </div>
       <dl className="session-recap-stats">
         <div>
@@ -1276,14 +1390,23 @@ function SessionRecapCard({
           <dd>{card.stats.best_story ?? "None"}</dd>
         </div>
         <div>
-          <dt>Opening</dt>
-          <dd>{card.stats.most_common_opening ?? "Mixed openings"}</dd>
-        </div>
-        <div>
-          <dt>Rating</dt>
+          <dt>Rating +/-</dt>
           <dd>{formatRatingDelta(card.stats.rating_delta)}</dd>
         </div>
       </dl>
+      <section className="session-recap-openings" aria-label="Openings played today">
+        <div className="session-recap-openings-heading">
+          <span>Openings today</span>
+          <strong>Win rate</strong>
+        </div>
+        {(card.stats.openings ?? []).slice(0, 4).map((opening) => (
+          <div className="session-recap-opening-row" key={opening.name}>
+            <span>{opening.name}</span>
+            <small>{opening.record}</small>
+            <strong>{formatPercent(opening.win_rate)}</strong>
+          </div>
+        ))}
+      </section>
       <footer>swindle.app/{card.player.username}</footer>
     </div>
   );
@@ -1519,26 +1642,6 @@ function LandingPage() {
         </div>
       </section>
 
-      <section className="landing-section landing-profile-preview" aria-label="Example profile preview">
-        <div>
-          <p className="landing-kicker">Public profile preview</p>
-          <h2>Clevermike02</h2>
-          <div className="landing-profile-stats">
-            <Stat label="Published cards" value={12} />
-            <Stat label="Common story" value="Giant Slayer" />
-            <Stat label="Games imported" value={42} />
-          </div>
-        </div>
-        <div className="landing-mini-grid">
-          {LANDING_DEMO_CARDS.slice(0, 3).map((item) => (
-            <article className="landing-mini-card" key={item.name}>
-              <span>{item.card.story.badge_label}</span>
-              <strong>{item.card.story.headline}</strong>
-            </article>
-          ))}
-        </div>
-      </section>
-
       <section className="landing-final-cta">
         <h2>Start with your latest Lichess games.</h2>
         <button type="button" onClick={connectLichess}>
@@ -1624,7 +1727,7 @@ function PublicCardActions({
 
 function SessionDetailPage({ sessionId }: { sessionId: string }) {
   const [detail, setDetail] = useState<SessionDetail | null>(null);
-  const [status, setStatus] = useState("Loading session recap...");
+  const [status, setStatus] = useState("Loading daily recap...");
   const [selectedTheme, setSelectedTheme] = useState<ShareCardTheme>("classic");
   const [selectedSize, setSelectedSize] = useState<ShareCardSize>("square");
   const cardRef = useRef<HTMLElement | null>(null);
@@ -1639,51 +1742,68 @@ function SessionDetailPage({ sessionId }: { sessionId: string }) {
       setDetail(nextDetail);
       setStatus("Ready");
     } catch (error) {
-      setStatus(error instanceof Error ? error.message : "Could not load session recap");
+      setStatus(error instanceof Error ? error.message : "Could not load daily recap");
     }
   }
 
   async function handleExport() {
     if (!detail?.share_card || !cardRef.current) return;
-    setStatus("Exporting session recap...");
+    setStatus("Exporting daily recap...");
     try {
       await exportElementAsPng(cardRef.current, sessionExportFileName(detail.share_card, selectedTheme, selectedSize), CARD_SIZES[selectedSize]);
-      setStatus("Session recap exported");
+      setStatus("Daily recap exported");
     } catch (error) {
-      setStatus(error instanceof Error ? error.message : "Session recap export failed");
+      setStatus(error instanceof Error ? error.message : "Daily recap export failed");
     }
   }
 
   if (!detail) {
-    return <PublicShell title="Session recap" status={status} />;
+    return <PublicShell title="Daily recap" status={status} />;
   }
 
   return (
-    <PublicShell title={detail.mood ?? "Session recap"} status={status}>
+    <PublicShell title={detail.mood ?? "Daily recap"} status={status}>
       <section className="session-detail-page">
         <div className="session-detail-main">
-          <p className="landing-kicker">Session Recap</p>
+          <p className="landing-kicker">Daily Recap</p>
           <h1>{detail.summary_headline}</h1>
           {detail.summary_subheadline ? <p>{detail.summary_subheadline}</p> : null}
           <dl className="profile-stats session-detail-stats">
             <Stat label="Record" value={recordLabel(detail)} />
             <Stat label="Games" value={detail.games_count} />
-            <Stat label="Opening" value={detail.most_common_opening ?? "Mixed openings"} />
-            <Stat label="Rating" value={formatRatingDelta(detail.rating_delta)} />
+            <Stat label="Rating +/-" value={formatRatingDelta(detail.rating_delta)} />
             <Stat label="Best story" value={storyLabel(detail.best_story_type)} />
           </dl>
+          <section className="session-openings-detail" aria-label="Openings played today">
+            <div className="section-heading">
+              <div>
+                <p>Openings</p>
+                <h2>Opening results today</h2>
+              </div>
+            </div>
+            <div className="session-opening-list">
+              {(detail.openings ?? []).map((opening) => (
+                <article className="session-opening-row" key={opening.name}>
+                  <strong>{opening.name}</strong>
+                  <span>{opening.games} game{opening.games === 1 ? "" : "s"}</span>
+                  <span>{opening.record}</span>
+                  <em>{formatPercent(opening.win_rate)}</em>
+                </article>
+              ))}
+            </div>
+          </section>
           <section className="session-games" aria-label="Games in session">
             <div className="section-heading">
               <div>
                 <p>Games</p>
-                <h2>{detail.games.length} games in this session</h2>
+                <h2>{detail.games.length} games this day</h2>
               </div>
             </div>
             <div className="session-game-list">
               {detail.games.map((game) => (
                 <article className="session-game-row" key={game.id}>
                   <strong>{game.result.toUpperCase()}</strong>
-                  <span>{game.opening_name ?? "Unknown opening"}</span>
+                  <span>{gameOpeningLabel(game)}</span>
                   <span>{game.opponent_username ?? "Unknown opponent"}</span>
                   <span>{game.moves_count ?? 0} moves</span>
                   <em>{game.story ? `${game.story.badge_label} ${game.story.badge_emoji}` : "No story"}</em>
@@ -1704,7 +1824,7 @@ function SessionDetailPage({ sessionId }: { sessionId: string }) {
               <SizeSelector selectedSize={selectedSize} onSizeChange={setSelectedSize} />
               <div className="preview-actions">
                 <button type="button" className="secondary" onClick={handleExport}>
-                  Export session recap
+                  Export daily recap
                 </button>
                 <a className="button-link secondary-link" href="/journal">
                   Back to journal
@@ -1726,7 +1846,7 @@ function SessionDetailPage({ sessionId }: { sessionId: string }) {
               </div>
             </>
           ) : (
-            <p className="empty-state">Session recap card unavailable.</p>
+            <p className="empty-state">Daily recap card unavailable.</p>
           )}
         </aside>
       </section>
@@ -1981,9 +2101,9 @@ function PublicPostPage({ postId }: { postId: string }) {
             <button type="button" className="secondary" onClick={() => copyToClipboard(currentPostUrl)}>
               Copy post link
             </button>
-            {post.game?.external_game_id ? (
-              <a className="button-link" href={lichessUrl(post.game.external_game_id)} target="_blank" rel="noreferrer">
-                Open on Lichess
+            {post.game ? (
+              <a className="button-link" href={gameUrl(post.game)} target="_blank" rel="noreferrer">
+                Open on {platformLabel(post.game.platform)}
               </a>
             ) : null}
           </div>
@@ -2187,13 +2307,25 @@ function TopNav({
   fallbackProfileSlug?: string | null;
   children?: ReactNode;
 }) {
+  const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+  const menuId = `top-nav-menu-${activePage}`;
+
   return (
     <nav className="top-nav">
       <div>
         <p>Swindle V1</p>
         <h1>{title}</h1>
       </div>
-      <div className="view-tabs">
+      <button
+        type="button"
+        className="top-menu-toggle"
+        aria-expanded={mobileMenuOpen}
+        aria-controls={menuId}
+        onClick={() => setMobileMenuOpen((open) => !open)}
+      >
+        Menu
+      </button>
+      <div className={mobileMenuOpen ? "view-tabs is-open" : "view-tabs"} id={menuId}>
         {navItems(activePage, lichessStatus, fallbackProfileSlug).map((item) =>
           item.disabled ? (
             <button type="button" className={item.active ? "tab is-active" : "tab"} disabled key={item.label}>
@@ -2244,8 +2376,28 @@ function publicPlayerName(game: JournalGame): string {
   return "Player";
 }
 
-function lichessUrl(externalGameId: string): string | undefined {
-  return externalGameId ? `https://lichess.org/${externalGameId}` : undefined;
+function gameUrl(game: { platform: string; external_game_id: string }): string | undefined {
+  if (!game.external_game_id) return undefined;
+  if (game.platform === "chesscom") {
+    return game.external_game_id.startsWith("http") ? game.external_game_id : undefined;
+  }
+  return `https://lichess.org/${game.external_game_id}`;
+}
+
+function platformLabel(platform?: string | null): string {
+  if (platform === "chesscom") return "Chess.com";
+  if (platform === "lichess") return "Lichess";
+  return platform ?? "Unknown";
+}
+
+function gameOpeningLabel(game: Pick<SessionDetail["games"][number], "opening_name" | "platform">): string {
+  return game.opening_name ?? `${platformLabel(game.platform)} game`;
+}
+
+function formatDate(value: string): string {
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return value;
+  return date.toLocaleString(undefined, { dateStyle: "medium", timeStyle: "short" });
 }
 
 function debugRows(debug: GameDebug): Array<[string, unknown]> {
@@ -2370,6 +2522,11 @@ function formatRatingDelta(value: number | null | undefined): string {
   if (value == null) return "None";
   if (value === 0) return "0";
   return value > 0 ? `+${value}` : String(value);
+}
+
+function formatPercent(value: number | null | undefined): string {
+  if (value == null) return "0%";
+  return `${Math.round(value * 100)}%`;
 }
 
 function nextFrame(): Promise<void> {

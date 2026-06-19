@@ -5,7 +5,7 @@ import type { JournalGame } from "../src/types.ts";
 
 const games: JournalGame[] = [
   game("one", "win", "Sicilian Defense", "higherRated"),
-  game("two", "loss", "French Defense", "Bai_Daniil"),
+  game("two", "loss", "French Defense", "Bai_Daniil", "chesscom"),
   game("three", "draw", "Queen's Gambit", "equalOpponent"),
 ];
 
@@ -29,8 +29,20 @@ assert.deepEqual(
   ["two"],
 );
 
+assert.deepEqual(
+  filterJournalGames(games, "lichess", "", new Set()).map((item) => item.id),
+  ["one", "three"],
+);
+
+assert.deepEqual(
+  filterJournalGames(games, "chesscom", "", new Set()).map((item) => item.id),
+  ["two"],
+);
+
 const appSource = readFileSync(new URL("../src/App.tsx", import.meta.url), "utf8");
 const cssSource = readFileSync(new URL("../src/styles.css", import.meta.url), "utf8");
+const apiSource = readFileSync(new URL("../src/lib/api.ts", import.meta.url), "utf8");
+const shareCardSource = readFileSync(new URL("../src/components/cards/ShareCard.tsx", import.meta.url), "utf8");
 
 assert.match(appSource, /className="journal-layout"/);
 assert.match(appSource, /className="control-panel journal-left"/);
@@ -50,6 +62,17 @@ assert.match(cssSource, /@media \(max-width: 768px\)[\s\S]*\.mobile-journal-prev
 assert.match(cssSource, /\.mobile-action-grid\s*\{[^}]*grid-template-columns: repeat\(2, minmax\(0, 1fr\)\);/s);
 assert.match(cssSource, /\.responsive-card-stage\s*\{[^}]*width: var\(--card-width\);[^}]*height: calc\(var\(--card-height\) \* var\(--card-scale\)\);/s);
 assert.match(appSource, /<ResponsiveShareCard card=\{selectedCard\} theme=\{selectedTheme\} size=\{selectedSize\} \/>/);
+assert.match(appSource, /Chess\.com imports use public game archives\. No password required\./);
+assert.match(appSource, /Add Chess\.com username/);
+assert.match(appSource, /Import Chess\.com games/);
+assert.match(appSource, /className=\{`platform-badge platform-\$\{game\.platform\}`\}/);
+assert.match(appSource, /gameUrl\(selectedGame\)/);
+assert.match(cssSource, /\.platform-badge/);
+assert.match(cssSource, /\.platform-chesscom/);
+assert.match(apiSource, /integrations\/chesscom\/link/);
+assert.match(apiSource, /games\/import\/chesscom/);
+assert.match(apiSource, /integrations\/chesscom\/status/);
+assert.match(shareCardSource, /platformLabel\(card\.game\.platform\)/);
 
 const mobilePreviewIndex = appSource.indexOf("MobileJournalPreview");
 const suggestedIndex = appSource.indexOf("Suggested Stories");
@@ -58,11 +81,11 @@ assert.ok(mobilePreviewIndex > -1);
 assert.ok(mobilePreviewIndex < suggestedIndex);
 assert.ok(mobilePreviewIndex < journalIndex);
 
-function game(id: string, result: string, opening: string, opponent: string): JournalGame {
+function game(id: string, result: string, opening: string, opponent: string, platform = "lichess"): JournalGame {
   return {
     id,
     external_game_id: id,
-    platform: "lichess",
+    platform,
     opponent_username: opponent,
     result,
     opening_name: opening,

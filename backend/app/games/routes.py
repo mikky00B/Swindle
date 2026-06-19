@@ -1,6 +1,7 @@
 from fastapi import APIRouter, HTTPException, Query, Request
 
 from app.core.config import get_settings
+from app.games.chesscom_import import import_latest_chesscom_games
 from app.games.schemas import DebugEvalRequest
 from app.games.lichess_import import import_latest_lichess_games
 from app.games.repository import (
@@ -44,6 +45,17 @@ async def import_lichess_games(limit: int = Query(default=20, ge=10, le=20), req
     user_id = _get_user_id(request)
     try:
         result = await import_latest_lichess_games(limit=limit, user_id=user_id)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    rebuild_user_sessions(user_id)
+    return LichessImportResponse(**result)
+
+
+@router.post("/import/chesscom", response_model=LichessImportResponse)
+async def import_chesscom_games(limit: int = Query(default=20, ge=1, le=20), request: Request = None) -> LichessImportResponse:
+    user_id = _get_user_id(request)
+    try:
+        result = await import_latest_chesscom_games(limit=limit, user_id=user_id)
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     rebuild_user_sessions(user_id)

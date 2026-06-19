@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
 import { analysisNotice, getMetricRows, hasUsableEngineMetrics } from "../src/lib/cardMetrics.ts";
 import type { ShareCardData } from "../src/types.ts";
 
@@ -39,6 +40,19 @@ const unavailable = card({
 });
 
 assert.equal(analysisNotice(unavailable), "No cloud eval found for this game yet");
+
+const metadataRows = getMetricRows(unavailable);
+assert.deepEqual(metadataRows.find(([label]) => label === "Format"), ["Format", "blitz"]);
+assert.equal(metadataRows.some(([label]) => label === "Speed"), false);
+
+const appSource = readFileSync(new URL("../src/App.tsx", import.meta.url), "utf8");
+assert.match(appSource, /<dt>Format<\/dt>/);
+assert.doesNotMatch(appSource, /<dt>Speed<\/dt>/);
+
+const shareCardSource = readFileSync(new URL("../src/components/cards/ShareCard.tsx", import.meta.url), "utf8");
+assert.match(shareCardSource, /platformStoryCardLabel\(card\.game\.platform\)/);
+assert.match(shareCardSource, /if \(platform === "chesscom"\) return "chess\.com";/);
+assert.doesNotMatch(shareCardSource, /<span>lichess story card<\/span>/);
 
 function card(metrics: ShareCardData["metrics"]): ShareCardData {
   return {

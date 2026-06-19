@@ -50,6 +50,7 @@ def build_share_card_data(
     story: GameStory,
     metrics: GameMetrics | None,
     username: str | None,
+    platform: str = "lichess",
 ) -> ShareCardData:
     metrics = metrics or GameMetrics()
     board_fen, source = resolve_board_position(story, game)
@@ -58,6 +59,7 @@ def build_share_card_data(
         template=story.template_key,
         player=ShareCardPlayer(username=username or "Player"),
         game=ShareCardGame(
+            platform=platform,
             user_color=game.user_color,
             speed=game.speed,
             time_control=game.time_control,
