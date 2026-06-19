@@ -87,6 +87,19 @@ def test_daily_rating_delta_is_inferred_from_chesscom_rating_snapshots() -> None
 
     recap = TestClient(app).get("/api/v1/sessions", headers=session("player")).json()[0]
     assert recap["rating_delta"] == 9
+    assert recap["rating_tracks"] == [
+        {
+            "platform": "chesscom",
+            "speed": "blitz",
+            "explicit_delta": 0,
+            "has_explicit": False,
+            "first_rating": 1392,
+            "last_rating": 1401,
+            "first_played_at": "2026-06-18T18:00:00",
+            "last_played_at": "2026-06-18T18:40:00",
+            "inferred_delta": 9,
+        }
+    ]
 
 
 def test_clean_climb_mood_is_selected() -> None:
@@ -149,7 +162,11 @@ def test_session_detail_endpoint_returns_games() -> None:
     create_games("player", [("win", 0), ("loss", 10)])
     rebuild_user_sessions("player")
     client = TestClient(app)
-    session_id = client.get("/api/v1/sessions", headers=session("player")).json()[0]["id"]
+    session_summary = client.get("/api/v1/sessions", headers=session("player")).json()[0]
+    session_id = session_summary["id"]
+
+    assert session_summary["openings"][0]["name"] == "Sicilian Defense"
+    assert session_summary["openings"][0]["record"] == "1W - 1L - 0D"
 
     response = client.get(f"/api/v1/sessions/{session_id}", headers=session("player"))
 

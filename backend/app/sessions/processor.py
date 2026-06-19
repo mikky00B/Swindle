@@ -67,9 +67,19 @@ def rebuild_user_sessions(user_id: str) -> dict[str, int]:
 def list_sessions(user_id: str) -> list[dict[str, Any]]:
     with get_session() as session:
         sessions = session.scalars(
-            select(GameSession).where(GameSession.user_id == user_id).order_by(GameSession.started_at.desc())
-        ).all()
-        return [_session_summary(item) for item in sessions]
+            select(GameSession)
+            .options(joinedload(GameSession.games).joinedload(GameSessionGame.game))
+            .where(GameSession.user_id == user_id)
+            .order_by(GameSession.started_at.desc())
+        ).unique().all()
+        return [
+            _session_summary(
+                item,
+                openings=_opening_breakdown([link.game for link in item.games if link.game is not None]),
+                rating_tracks=_rating_tracks([link.game for link in item.games if link.game is not None]),
+            )
+            for item in sessions
+        ]
 
 
 def get_session_detail(session_id: str, user_id: str) -> dict[str, Any] | None:
@@ -88,9 +98,10 @@ def get_session_detail(session_id: str, user_id: str) -> dict[str, Any] | None:
             .unique()
             .all()
         )
-        payload = _session_summary(recap)
+        games = [link.game for link in links if link.game is not None]
+        payload = _session_summary(recap, openings=_opening_breakdown(games), rating_tracks=_rating_tracks(games))
         payload["games"] = [_game_summary(link.game) for link in links]
-        payload["openings"] = _opening_breakdown([link.game for link in links if link.game is not None])
+        payload["openings"] = _opening_breakdown(games)
         payload["best_game"] = _game_summary(recap.best_game) if recap.best_game else None
         payload["share_card"] = _session_share_card(recap, links)
         return payload
@@ -168,27 +179,44 @@ def _most_common_opening(games: list[Game]) -> str:
 
 
 def _rating_delta(games: list[Game]) -> int | None:
-    explicit = sum(game.rating_change for game in games if game.rating_change is not None)
-    has_explicit = any(game.rating_change is not None for game in games)
-    inferred = 0
-    has_inferred = False
-    grouped: dict[tuple[str, str | None], list[Game]] = {}
-    for game in games:
-        if game.rating_change is not None or game.user_rating_before is None:
-            continue
-        grouped.setdefault((game.platform, game.speed), []).append(game)
-
-    for group in grouped.values():
-        ordered = sorted(group, key=lambda game: game.played_at or datetime.min.replace(tzinfo=timezone.utc))
-        ratings = [game.user_rating_before for game in ordered if game.user_rating_before is not None]
-        if len(ratings) < 2:
-            continue
-        inferred += ratings[-1] - ratings[0]
-        has_inferred = True
+    tracks = _rating_tracks(games)
+    explicit = sum(track["explicit_delta"] for track in tracks)
+    has_explicit = any(track["has_explicit"] for track in tracks)
+    inferred = sum(track["inferred_delta"] or 0 for track in tracks)
+    has_inferred = any(track["inferred_delta"] is not None for track in tracks)
 
     if not has_explicit and not has_inferred:
         return None
     return explicit + inferred
+
+
+def _rating_tracks(games: list[Game]) -> list[dict[str, Any]]:
+    grouped: dict[tuple[str, str | None], list[Game]] = {}
+    for game in games:
+        grouped.setdefault((game.platform, game.speed), []).append(game)
+
+    tracks: list[dict[str, Any]] = []
+    for (platform, speed), group in grouped.items():
+        ordered = sorted(group, key=lambda game: game.played_at or datetime.min.replace(tzinfo=timezone.utc))
+        explicit_delta = sum(game.rating_change for game in ordered if game.rating_change is not None)
+        rating_games = [game for game in ordered if game.rating_change is None and game.user_rating_before is not None]
+        inferred_delta = None
+        if len(rating_games) >= 2:
+            inferred_delta = rating_games[-1].user_rating_before - rating_games[0].user_rating_before
+        tracks.append(
+            {
+                "platform": platform,
+                "speed": speed,
+                "explicit_delta": explicit_delta,
+                "has_explicit": any(game.rating_change is not None for game in ordered),
+                "first_rating": rating_games[0].user_rating_before if rating_games else None,
+                "last_rating": rating_games[-1].user_rating_before if rating_games else None,
+                "first_played_at": _iso(rating_games[0].played_at) if rating_games else None,
+                "last_played_at": _iso(rating_games[-1].played_at) if rating_games else None,
+                "inferred_delta": inferred_delta,
+            }
+        )
+    return tracks
 
 
 def _mood(games_count: int, wins: int, losses: int, stories: Counter[str]) -> str:
@@ -261,8 +289,12 @@ def _story_label(value: str | None) -> str:
     return (value or "Daily Activity").replace("_", " ").title()
 
 
-def _session_summary(recap: GameSession) -> dict[str, Any]:
-    return {
+def _session_summary(
+    recap: GameSession,
+    openings: list[dict[str, Any]] | None = None,
+    rating_tracks: list[dict[str, Any]] | None = None,
+) -> dict[str, Any]:
+    payload = {
         "id": recap.id,
         "started_at": _iso(recap.started_at),
         "ended_at": _iso(recap.ended_at),
@@ -286,6 +318,11 @@ def _session_summary(recap: GameSession) -> dict[str, Any]:
         "giant_slayer_count": recap.giant_slayer_count,
         "turning_point_count": recap.turning_point_count,
     }
+    if openings is not None:
+        payload["openings"] = openings
+    if rating_tracks is not None:
+        payload["rating_tracks"] = rating_tracks
+    return payload
 
 
 def _game_summary(game: Game | None) -> dict[str, Any] | None:

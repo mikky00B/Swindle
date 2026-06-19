@@ -60,7 +60,7 @@ assert.match(cssSource, /@media \(max-width: 768px\)/);
 assert.match(cssSource, /@media \(max-width: 768px\)[\s\S]*\.journal-right\s*\{[^}]*display: none;/);
 assert.match(cssSource, /@media \(max-width: 768px\)[\s\S]*\.mobile-journal-preview\s*\{[^}]*display: grid;/);
 assert.match(cssSource, /\.mobile-action-grid\s*\{[^}]*grid-template-columns: repeat\(2, minmax\(0, 1fr\)\);/s);
-assert.match(cssSource, /\.responsive-card-stage\s*\{[^}]*width: var\(--card-width\);[^}]*height: calc\(var\(--card-height\) \* var\(--card-scale\)\);/s);
+assert.match(cssSource, /\.responsive-card-stage\s*\{[^}]*width: calc\(var\(--card-width\) \* var\(--card-scale\)\);[^}]*height: calc\(var\(--card-height\) \* var\(--card-scale\)\);/s);
 assert.match(appSource, /<ResponsiveShareCard card=\{selectedCard\} theme=\{selectedTheme\} size=\{selectedSize\} \/>/);
 assert.match(appSource, /Chess\.com imports use public game archives\. No password required\./);
 assert.match(appSource, /Add Chess\.com username/);

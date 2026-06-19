@@ -19,7 +19,6 @@ import {
   getPublicPost,
   getPublicProfile,
   getSessionDetail,
-  getSessionShareCard,
   ignoreSuggestedStory,
   importLatestChessComGames,
   importLatestLichessGames,
@@ -86,6 +85,8 @@ import type {
   PublicProfile,
   PublishedPost,
   SessionDetail,
+  SessionOpeningSummary,
+  SessionRatingTrack,
   SessionShareCardData,
   SessionSummary,
   ShareCardData,
@@ -458,24 +459,27 @@ export function App() {
     }
   }
 
-  async function handleExportSession(sessionId: string) {
-    setStatus("Exporting daily recap...");
+  async function handleExportSessionWindow(recapCard: SessionShareCardData) {
+    setStatus("Exporting recap...");
     try {
-      const recapCard = await getSessionShareCard(sessionId);
-      setSessionExportCard(recapCard);
-      await nextFrame();
-      if (!sessionCardRef.current) {
-        throw new Error("Daily recap card is not ready");
-      }
-      await exportElementAsPng(
-        sessionCardRef.current,
-        sessionExportFileName(recapCard, selectedTheme, selectedSize),
-        CARD_SIZES[selectedSize],
-      );
-      setStatus("Daily recap exported");
+      await exportSessionCard(recapCard);
+      setStatus("Recap exported");
     } catch (error) {
-      setStatus(error instanceof Error ? error.message : "Daily recap export failed");
+      setStatus(error instanceof Error ? error.message : "Recap export failed");
     }
+  }
+
+  async function exportSessionCard(recapCard: SessionShareCardData) {
+    setSessionExportCard(recapCard);
+    await nextFrame();
+    if (!sessionCardRef.current) {
+      throw new Error("Daily recap card is not ready");
+    }
+    await exportElementAsPng(
+      sessionCardRef.current,
+      sessionExportFileName(recapCard, selectedTheme, selectedSize),
+      CARD_SIZES[selectedSize],
+    );
   }
 
   async function handleGenerate() {
@@ -556,7 +560,7 @@ export function App() {
               onIgnoreSuggestion={handleIgnoreSuggestion}
               onResetIgnoredSuggestions={handleResetIgnoredSuggestions}
               onRebuildSessions={handleRebuildSessions}
-              onExportSession={handleExportSession}
+              onExportSessionWindow={handleExportSessionWindow}
               onReprocessGame={handleReprocessGame}
               onReprocessAllGames={handleReprocessAllGames}
               onAnalyzeGame={handleAnalyzeGame}
@@ -702,7 +706,7 @@ type JournalControlsProps = {
   onIgnoreSuggestion: (storyId: string) => void;
   onResetIgnoredSuggestions: () => void;
   onRebuildSessions: () => void;
-  onExportSession: (sessionId: string) => void;
+  onExportSessionWindow: (card: SessionShareCardData) => void;
   onReprocessGame: (gameId: string) => void;
   onReprocessAllGames: () => void;
   onAnalyzeGame: (gameId: string) => void;
@@ -757,7 +761,7 @@ function JournalControls({
   onIgnoreSuggestion,
   onResetIgnoredSuggestions,
   onRebuildSessions,
-  onExportSession,
+  onExportSessionWindow,
   onReprocessGame,
   onReprocessAllGames,
   onAnalyzeGame,
@@ -847,7 +851,12 @@ function JournalControls({
         onLockedThemeClick={onLockedThemeClick}
       />
 
-      <RecentSessionsSection sessions={sessions} onRebuild={onRebuildSessions} onExport={onExportSession} />
+      <RecentSessionsSection
+        sessions={sessions}
+        username={lichessStatus?.platform_username ?? chesscomStatus?.platform_username ?? "Player"}
+        onRebuild={onRebuildSessions}
+        onExportWindow={onExportSessionWindow}
+      />
 
       <section className="suggested-section" aria-label="Suggested Stories">
         <div className="section-heading">
@@ -1096,69 +1105,355 @@ function JournalControls({
   );
 }
 
+type RecapWindow = {
+  days: 1 | 2 | 7;
+  label: string;
+  eyebrow: string;
+};
+
+const RECAP_WINDOWS: RecapWindow[] = [
+  { days: 1, label: "1 day", eyebrow: "Latest day" },
+  { days: 2, label: "2 days", eyebrow: "Last 2 days" },
+  { days: 7, label: "Week", eyebrow: "Last 7 days" },
+];
+
 function RecentSessionsSection({
   sessions,
+  username,
   onRebuild,
-  onExport,
+  onExportWindow,
 }: {
   sessions: SessionSummary[];
+  username: string;
   onRebuild: () => void;
-  onExport: (sessionId: string) => void;
+  onExportWindow: (card: SessionShareCardData) => void;
 }) {
+  const [selectedWindow, setSelectedWindow] = useState<RecapWindow["days"]>(1);
+  const [showDetails, setShowDetails] = useState(false);
+  const windowOption = RECAP_WINDOWS.find((option) => option.days === selectedWindow) ?? RECAP_WINDOWS[0];
+  const recapCard = buildRecapWindowCard(sessions, windowOption, username);
+  const recap = recapCard?.session ?? null;
+  const selectedSessions = sessionsInWindow(sessions, windowOption.days);
+  const openings = recapCard?.stats.openings ?? [];
+
   return (
     <section className="sessions-section" aria-label="Daily Recaps">
       <div className="section-heading">
         <div>
-          <p>Daily Recaps</p>
-          <h2>{sessions.length} recap{sessions.length === 1 ? "" : "s"}</h2>
+          <p>Recap Window</p>
+          <h2>{windowOption.label} recap</h2>
         </div>
         <button type="button" className="secondary compact-button" onClick={onRebuild}>
           Rebuild daily recaps
         </button>
       </div>
+      <div className="recap-window-tabs" aria-label="Choose recap timeframe">
+        {RECAP_WINDOWS.map((option) => (
+          <button
+            type="button"
+            className={option.days === selectedWindow ? "is-active" : ""}
+            onClick={() => {
+              setSelectedWindow(option.days);
+              setShowDetails(false);
+            }}
+            key={option.days}
+          >
+            <span>{option.label}</span>
+            <small>{option.eyebrow}</small>
+          </button>
+        ))}
+      </div>
       {sessions.length === 0 ? (
         <p className="empty-state">No daily recaps yet. Import games to generate daily recaps.</p>
+      ) : recap === null || recapCard === null ? (
+        <p className="empty-state">No games found for this timeframe yet.</p>
       ) : (
-        <div className="session-list">
-          {sessions.map((session) => (
-            <article className="session-card" key={session.id}>
-              <div className="session-card-top">
-                <span className="story-chip">{session.mood ?? "Daily recap"}</span>
-                <strong>{session.games_count} games</strong>
-              </div>
-              <h3>{session.summary_headline}</h3>
-              <dl className="story-facts">
-                <div>
-                  <dt>Record</dt>
-                  <dd>{recordLabel(session)}</dd>
+        <article className="session-card session-window-card">
+          <div className="session-card-top">
+            <span className="story-chip">{recap.mood ?? "Recap"}</span>
+            <strong>{recap.games_count} games</strong>
+          </div>
+          <h3>{recap.summary_headline}</h3>
+          <p>{recap.summary_subheadline}</p>
+          <dl className="story-facts">
+            <div>
+              <dt>Record</dt>
+              <dd>{recordLabel(recap)}</dd>
+            </div>
+            <div>
+              <dt>Best story</dt>
+              <dd>{storyLabel(recap.best_story_type)}</dd>
+            </div>
+            <div>
+              <dt>Opening</dt>
+              <dd>{recap.most_common_opening ?? "Mixed openings"}</dd>
+            </div>
+            <div>
+              <dt>Rating +/-</dt>
+              <dd>{formatRatingDelta(recap.rating_delta)}</dd>
+            </div>
+          </dl>
+          <div className="suggested-actions">
+            <button type="button" className="compact-button" onClick={() => setShowDetails((open) => !open)}>
+              {showDetails ? "Hide" : "View"} {windowOption.label} details
+            </button>
+            <button type="button" className="secondary compact-button" onClick={() => onExportWindow(recapCard)}>
+              Export {windowOption.label} recap
+            </button>
+          </div>
+          {showDetails ? (
+            <div className="recap-window-details">
+              <section aria-label="Openings in selected recap timeframe">
+                <div className="recap-detail-heading">
+                  <span>Openings played</span>
+                  <strong>{openings.length}</strong>
                 </div>
-                <div>
-                  <dt>Best story</dt>
-                  <dd>{storyLabel(session.best_story_type)}</dd>
+                {openings.length === 0 ? (
+                  <p>No opening data found for this timeframe.</p>
+                ) : (
+                  <div className="recap-opening-list">
+                    {openings.map((opening) => (
+                      <div className="recap-opening-row" key={opening.name}>
+                        <span>{opening.name}</span>
+                        <small>{opening.games} game{opening.games === 1 ? "" : "s"} · {opening.record}</small>
+                        <strong>{formatPercent(opening.win_rate)}</strong>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </section>
+              <section aria-label="Daily recaps included in selected timeframe">
+                <div className="recap-detail-heading">
+                  <span>Days included</span>
+                  <strong>{selectedSessions.length}</strong>
                 </div>
-                <div>
-                  <dt>Opening</dt>
-                  <dd>{session.most_common_opening ?? "Mixed openings"}</dd>
+                <div className="recap-day-list">
+                  {selectedSessions.map((session) => (
+                    <div className="recap-day-row" key={session.id}>
+                      <span>{session.started_at ? formatDate(session.started_at) : "Recent day"}</span>
+                      <small>{recordLabel(session)} · {session.games_count} games</small>
+                      <a href={`/sessions/${encodeURIComponent(session.id)}`}>Open day</a>
+                    </div>
+                  ))}
                 </div>
-                <div>
-                  <dt>Rating +/-</dt>
-                  <dd>{formatRatingDelta(session.rating_delta)}</dd>
-                </div>
-              </dl>
-              <div className="suggested-actions">
-                <a className="button-link compact-button" href={`/sessions/${encodeURIComponent(session.id)}`}>
-                  View recap
-                </a>
-                <button type="button" className="secondary compact-button" onClick={() => onExport(session.id)}>
-                  Export recap
-                </button>
-              </div>
-            </article>
-          ))}
-        </div>
+              </section>
+            </div>
+          ) : null}
+        </article>
       )}
     </section>
   );
+}
+
+const FRONTEND_STORY_PRIORITY: Record<string, number> = {
+  rating_milestone: 110,
+  swindle: 100,
+  heartbreaker: 95,
+  giant_slayer: 90,
+  turning_point: 85,
+  clean_game: 80,
+  miniature: 70,
+  long_grind: 60,
+  opening_win: 50,
+  daily_activity: 20,
+};
+
+function buildRecapWindowCard(
+  sessions: SessionSummary[],
+  windowOption: RecapWindow,
+  username: string,
+): SessionShareCardData | null {
+  const selectedSessions = sessionsInWindow(sessions, windowOption.days);
+  if (selectedSessions.length === 0) return null;
+
+  const newest = selectedSessions[0];
+  const oldest = selectedSessions[selectedSessions.length - 1];
+  const gamesCount = selectedSessions.reduce((total, session) => total + session.games_count, 0);
+  const wins = selectedSessions.reduce((total, session) => total + session.wins_count, 0);
+  const losses = selectedSessions.reduce((total, session) => total + session.losses_count, 0);
+  const draws = selectedSessions.reduce((total, session) => total + session.draws_count, 0);
+  const bestStory = bestStoryForSessions(selectedSessions);
+  const ratingDelta = aggregateSessionRatingDelta(selectedSessions);
+  const openings = combineSessionOpenings(selectedSessions);
+  const mostCommonOpening = openings[0]?.name ?? "Mixed openings";
+  const mood = windowOption.days === 1 ? (newest.mood ?? "Daily recap") : `${windowOption.label} recap`;
+  const dateRange = sessionDateRangeLabel(oldest.started_at, newest.ended_at ?? newest.started_at);
+  const summaryHeadline =
+    windowOption.days === 1
+      ? newest.summary_headline
+      : `${windowOption.label} recap: ${gamesCount} games, ${wins} wins, ${losses} losses.`;
+  const summarySubheadline =
+    windowOption.days === 1
+      ? newest.summary_subheadline
+      : `${dateRange}. Best story: ${storyLabel(bestStory)}. Rating ${formatRatingDelta(ratingDelta)}.`;
+
+  const summary: SessionSummary = {
+    id: `window-${windowOption.days}-${newest.id}`,
+    started_at: oldest.started_at,
+    ended_at: newest.ended_at,
+    games_count: gamesCount,
+    wins_count: wins,
+    losses_count: losses,
+    draws_count: draws,
+    win_rate: gamesCount ? wins / gamesCount : 0,
+    best_story_type: bestStory,
+    best_game_id: newest.best_game_id,
+    best_game_story_id: newest.best_game_story_id,
+    most_common_opening: mostCommonOpening,
+    rating_delta: ratingDelta,
+    mood,
+    summary_headline: summaryHeadline,
+    summary_subheadline: summarySubheadline,
+    swindle_count: sumSessionCount(selectedSessions, "swindle_count"),
+    heartbreaker_count: sumSessionCount(selectedSessions, "heartbreaker_count"),
+    miniature_count: sumSessionCount(selectedSessions, "miniature_count"),
+    long_grind_count: sumSessionCount(selectedSessions, "long_grind_count"),
+    giant_slayer_count: sumSessionCount(selectedSessions, "giant_slayer_count"),
+    turning_point_count: sumSessionCount(selectedSessions, "turning_point_count"),
+  };
+
+  return {
+    kind: "session_recap",
+    template: "session_recap_square_v1",
+    player: { username },
+    session: summary,
+    stats: {
+      record: recordLabel(summary),
+      games_count: gamesCount,
+      best_story: storyLabel(bestStory),
+      most_common_opening: mostCommonOpening,
+      openings,
+      rating_delta: ratingDelta,
+    },
+  };
+}
+
+function sessionsInWindow(sessions: SessionSummary[], days: RecapWindow["days"]): SessionSummary[] {
+  const ordered = orderedSessions(sessions);
+  const newest = ordered[0];
+  if (!newest?.started_at) return ordered.slice(0, days);
+  const newestDate = startOfLocalDay(newest.started_at);
+  if (!newestDate) return ordered.slice(0, days);
+  const cutoff = new Date(newestDate);
+  cutoff.setDate(cutoff.getDate() - (days - 1));
+  return ordered.filter((session) => {
+    const sessionDate = startOfLocalDay(session.started_at);
+    return sessionDate ? sessionDate >= cutoff && sessionDate <= newestDate : false;
+  });
+}
+
+function orderedSessions(sessions: SessionSummary[]): SessionSummary[] {
+  return [...sessions].sort((left, right) => dateTimeValue(right.started_at) - dateTimeValue(left.started_at));
+}
+
+function bestStoryForSessions(sessions: SessionSummary[]): string | null {
+  const stories = sessions.map((session) => session.best_story_type).filter((value): value is string => Boolean(value));
+  if (stories.length === 0) return null;
+  return stories.reduce((best, story) =>
+    (FRONTEND_STORY_PRIORITY[story] ?? 0) > (FRONTEND_STORY_PRIORITY[best] ?? 0) ? story : best,
+  );
+}
+
+function combineSessionOpenings(sessions: SessionSummary[]): SessionOpeningSummary[] {
+  const grouped = new Map<string, SessionOpeningSummary>();
+  for (const session of sessions) {
+    for (const opening of session.openings ?? []) {
+      const item =
+        grouped.get(opening.name) ??
+        ({
+          name: opening.name,
+          games: 0,
+          wins: 0,
+          losses: 0,
+          draws: 0,
+          record: "0W - 0L - 0D",
+          win_rate: 0,
+        } satisfies SessionOpeningSummary);
+      item.games += opening.games;
+      item.wins += opening.wins;
+      item.losses += opening.losses;
+      item.draws += opening.draws;
+      grouped.set(opening.name, item);
+    }
+  }
+  return [...grouped.values()]
+    .map((opening) => ({
+      ...opening,
+      record: `${opening.wins}W - ${opening.losses}L - ${opening.draws}D`,
+      win_rate: opening.games ? opening.wins / opening.games : 0,
+    }))
+    .sort((left, right) => right.games - left.games || right.wins - left.wins || left.name.localeCompare(right.name));
+}
+
+function aggregateSessionRatingDelta(sessions: SessionSummary[]): number | null {
+  const tracks = sessions.flatMap((session) => session.rating_tracks ?? []);
+  if (tracks.length === 0) {
+    return sessions.some((session) => session.rating_delta != null)
+      ? sessions.reduce((total, session) => total + (session.rating_delta ?? 0), 0)
+      : null;
+  }
+
+  const explicitDelta = tracks.reduce((total, track) => total + (track.has_explicit ? track.explicit_delta : 0), 0);
+  const hasExplicit = tracks.some((track) => track.has_explicit);
+  let inferredDelta = 0;
+  let hasInferred = false;
+  const grouped = new Map<string, SessionRatingTrack[]>();
+  for (const track of tracks) {
+    grouped.set(ratingTrackKey(track), [...(grouped.get(ratingTrackKey(track)) ?? []), track]);
+  }
+  for (const group of grouped.values()) {
+    const snapshots = group
+      .flatMap((track) => [
+        ratingSnapshot(track.first_rating, track.first_played_at),
+        ratingSnapshot(track.last_rating, track.last_played_at),
+      ])
+      .filter((snapshot): snapshot is { rating: number; playedAt: number } => snapshot !== null)
+      .sort((left, right) => left.playedAt - right.playedAt);
+    const distinctSnapshots = snapshots.filter(
+      (snapshot, index) =>
+        index === 0 || snapshot.playedAt !== snapshots[index - 1].playedAt || snapshot.rating !== snapshots[index - 1].rating,
+    );
+    if (distinctSnapshots.length >= 2) {
+      inferredDelta += distinctSnapshots[distinctSnapshots.length - 1].rating - distinctSnapshots[0].rating;
+      hasInferred = true;
+    }
+  }
+
+  if (!hasExplicit && !hasInferred) return null;
+  return explicitDelta + inferredDelta;
+}
+
+function ratingTrackKey(track: SessionRatingTrack): string {
+  return `${track.platform}:${track.speed ?? ""}`;
+}
+
+function ratingSnapshot(rating?: number | null, playedAt?: string | null): { rating: number; playedAt: number } | null {
+  if (rating == null || !playedAt) return null;
+  const time = dateTimeValue(playedAt);
+  return time ? { rating, playedAt: time } : null;
+}
+
+function sumSessionCount(sessions: SessionSummary[], key: keyof SessionSummary): number {
+  return sessions.reduce((total, session) => total + Number(session[key] ?? 0), 0);
+}
+
+function sessionDateRangeLabel(start?: string | null, end?: string | null): string {
+  if (!start && !end) return "Recent games";
+  if (!start || start === end) return start ? formatDate(start) : formatDate(end as string);
+  return `${formatDate(start)} to ${formatDate(end as string)}`;
+}
+
+function startOfLocalDay(value?: string | null): Date | null {
+  if (!value) return null;
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return null;
+  return new Date(date.getFullYear(), date.getMonth(), date.getDate());
+}
+
+function dateTimeValue(value?: string | null): number {
+  if (!value) return 0;
+  const time = new Date(value).getTime();
+  return Number.isNaN(time) ? 0 : time;
 }
 
 function MobileJournalPreview({
@@ -1765,9 +2060,11 @@ function SessionDetailPage({ sessionId }: { sessionId: string }) {
     <PublicShell title={detail.mood ?? "Daily recap"} status={status}>
       <section className="session-detail-page">
         <div className="session-detail-main">
-          <p className="landing-kicker">Daily Recap</p>
-          <h1>{detail.summary_headline}</h1>
-          {detail.summary_subheadline ? <p>{detail.summary_subheadline}</p> : null}
+          <header className="session-detail-hero">
+            <p className="session-detail-kicker">Daily Recap</p>
+            <h1>{detail.summary_headline}</h1>
+            {detail.summary_subheadline ? <p>{detail.summary_subheadline}</p> : null}
+          </header>
           <dl className="profile-stats session-detail-stats">
             <Stat label="Record" value={recordLabel(detail)} />
             <Stat label="Games" value={detail.games_count} />
