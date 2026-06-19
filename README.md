@@ -1,28 +1,44 @@
 # Swindle
 
-Swindle is a Lichess-first chess storytelling app. V1 turns recent Lichess games into a private chess journal, detects story-worthy moments, renders shareable chess activity cards, and lets users publish selected cards to a simple social feed.
+Swindle is a Lichess-first chess storytelling app. It imports a user's recent Lichess games, keeps them in a private chess journal, detects story-worthy moments, and turns selected games into polished chess activity cards.
 
-Swindle is not a chess playing site and does not compete with Lichess. It is a lightweight story and visualization layer for games users already played.
+The product is not a chess playing site and is not a Lichess competitor. It is a social storytelling and visualization layer for games users already played.
 
-## V1 Features
+## V1 Promise
+
+Connect your Lichess account and turn your most interesting games into beautiful chess story cards.
+
+V1 focuses on:
 
 - Lichess OAuth connection.
-- Recent game import with deduplication.
-- Private chess journal for imported games.
-- Rule-based story processor with metadata and optional Lichess cloud evaluation data.
-- Suggested story-worthy games without auto-publishing.
-- Public landing page with example story cards and browser-based Lichess OAuth navigation.
-- Share-card theme system with Classic, Minimal, Neon Blitz, and Newspaper themes.
-- Multiple export sizes: square, story, portrait, and landscape.
-- PNG export with selected theme and size.
-- Published posts preserve card theme and size, with fallbacks for older posts.
-- Private session recaps that group imported Lichess games played close together.
-- Session recap PNG export with mood, record, opening, rating delta, and best story.
-- Public profile with published cards only.
-- Pull-based feed from followed users.
-- Follow/unfollow, kudos, and comments on public posts.
+- Recent Lichess game import.
+- Private chess journal for all imported games.
+- PGN parsing and normalized game storage.
+- Rule-based story generation.
+- Suggested share-worthy posts that stay private until published.
+- In-app story cards and PNG share-card export.
+- Public profile, pull-based feed, follows, kudos, and comments.
 
-Out of scope for V1: Chess.com, payments, push notifications, recommendations, mobile apps, and complex feed fan-out.
+Out of scope for V1:
+
+- Chess.com integration.
+- Mobile apps.
+- Payments or subscriptions.
+- Push notifications.
+- Real-time Lichess streaming.
+- Global leaderboards.
+- Tournament features.
+- Game playing inside Swindle.
+- Deep Stockfish analysis for every imported game.
+
+## Product Rules
+
+- Imported games always start as private journal entries.
+- Story-worthy games become private suggestions, not public posts.
+- Users explicitly choose what to publish.
+- Public profiles expose published posts only.
+- Share-card PNG export is rendered by the frontend from stable card data.
+- Lichess tokens must be encrypted at rest and never exposed to the frontend.
 
 ## Repository Structure
 
@@ -33,7 +49,8 @@ backend/
     games/                import, PGN parsing, game routes
     integrations/lichess/ Lichess OAuth and API integration
     publishing/           public profiles, posts, feed, social actions
-    sessions/             session recap grouping, summaries, share-card data
+    sessions/             private session recaps and share-card data
+    share_cards/          share-card response schemas and services
     story/                story detection, scoring, templates
     prototype/            development PGN story endpoint
   alembic/                database migrations
@@ -41,17 +58,31 @@ backend/
 
 frontend/
   src/
-    components/           share cards and chess board rendering
+    components/           chess boards, feed cards, share cards
     lib/                  API, export, chess, journal, social helpers
     App.tsx               V1 application screens
-  test/                   lightweight TypeScript helper tests
+  test/                   TypeScript helper tests
 ```
 
-The PGN demo is kept as a development tool for testing story-card generation without importing a Lichess account.
+## Story Engine
+
+The story processor turns game data into structured story objects. It starts with deterministic rules so V1 remains fast, cheap, and testable.
+
+Minimum V1 story types:
+
+- `giant_slayer`
+- `swindle`
+- `heartbreaker`
+- `clean_game`
+- `miniature`
+- `long_grind`
+- `rating_milestone`
+
+Suggested posts are created when a story is interesting enough, but they are not auto-published.
 
 ## Environment
 
-Copy `.env.example` to `.env` and set real values:
+Copy `.env.example` to `.env` and replace placeholders:
 
 ```powershell
 Copy-Item .env.example .env
@@ -59,15 +90,18 @@ Copy-Item .env.example .env
 
 Important variables:
 
-- `DATABASE_URL`: PostgreSQL connection string. Use `postgresql+psycopg://...` for the sync SQLAlchemy app.
-- `FRONTEND_ORIGIN`: frontend origin allowed by CORS and OAuth redirects, usually `http://127.0.0.1:5173`.
-- `CORS_ALLOWED_ORIGINS`: comma-separated local or deployed frontend origins.
+- `DATABASE_URL`: PostgreSQL connection string.
+- `REDIS_URL`: Redis connection string for queued work.
+- `APP_SECRET_KEY`: application secret.
+- `JWT_SECRET_KEY`: auth token secret.
+- `FRONTEND_ORIGIN`: frontend origin allowed by CORS and redirects.
+- `CORS_ALLOWED_ORIGINS`: comma-separated frontend origins.
 - `LICHESS_CLIENT_ID`: Lichess OAuth client id.
-- `LICHESS_REDIRECT_URI`: backend callback, usually `/api/v1/integrations/lichess/callback`.
-- `TOKEN_ENCRYPTION_KEY`: Fernet key for encrypted OAuth token storage.
-- `VITE_API_BASE`: frontend API base, usually `http://127.0.0.1:8000/api/v1`.
+- `LICHESS_REDIRECT_URI`: backend OAuth callback URL.
+- `TOKEN_ENCRYPTION_KEY`: Fernet key for OAuth token encryption.
+- `VITE_API_BASE`: frontend API base URL.
 
-Generate a local token encryption key:
+Generate a local Fernet key:
 
 ```powershell
 python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"
@@ -151,6 +185,7 @@ POST /api/v1/sessions/rebuild
 GET  /api/v1/sessions/{session_id}/share-card
 
 GET  /api/v1/stories/suggested
+PATCH /api/v1/stories/{story_id}
 POST /api/v1/stories/{story_id}/publish
 POST /api/v1/stories/{story_id}/ignore
 
@@ -161,40 +196,42 @@ DELETE /api/v1/profiles/{username}/follow
 GET    /api/v1/profiles/{username}/followers
 GET    /api/v1/profiles/{username}/following
 
-GET  /api/v1/feed
-GET  /api/v1/posts/{post_id}
-POST /api/v1/posts/{post_id}/unpublish
-POST /api/v1/posts/{post_id}/kudos
+GET    /api/v1/feed
+GET    /api/v1/posts/{post_id}
+PATCH  /api/v1/posts/{post_id}
+POST   /api/v1/posts/{post_id}/unpublish
+POST   /api/v1/posts/{post_id}/kudos
 DELETE /api/v1/posts/{post_id}/kudos
-GET  /api/v1/posts/{post_id}/comments
-POST /api/v1/posts/{post_id}/comments
+GET    /api/v1/posts/{post_id}/comments
+POST   /api/v1/posts/{post_id}/comments
 DELETE /api/v1/comments/{comment_id}
 ```
 
 ## Deployment Notes
 
-The V1 app is deployment-ready for a single VPS or small container setup:
+V1 should be deployable on a VPS or small container setup:
 
 - PostgreSQL
+- Redis
 - FastAPI backend served by Uvicorn or Gunicorn/Uvicorn
+- Background worker for imports and story processing
 - Vite frontend built as static files
 - Nginx reverse proxy
-- Redis reserved for future background workers
 
 Deployment checklist:
 
-1. Set production `.env` values outside the repository.
+1. Set production environment values outside the repository.
 2. Run `alembic upgrade head` before starting the backend.
 3. Build the frontend with `VITE_API_BASE` pointed at the deployed API.
 4. Serve `frontend/dist` through Nginx or another static host.
 5. Proxy `/api` traffic to the backend service.
-6. Configure the Lichess OAuth app redirect URI to match production.
+6. Configure the Lichess OAuth redirect URI to match production.
 7. Keep `TOKEN_ENCRYPTION_KEY`, app secrets, and database credentials out of git.
 
 ## Privacy Rules
 
 - Imported games remain private journal entries.
-- Suggested posts are private until the user publishes.
+- Suggested posts remain private until the user publishes.
 - Feed shows only public published posts from followed users.
 - Ignored suggestions and unpublished posts do not appear publicly.
-- Kudos and comments only work on public posts.
+- Kudos and comments apply to public posts.
