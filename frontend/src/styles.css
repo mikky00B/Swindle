@@ -2370,17 +2370,6 @@ button.filter-tab.is-active {
   min-width: 0;
 }
 
-.session-recap-main p {
-  width: fit-content;
-  margin: 0;
-  padding: 12px 16px;
-  border: 2px solid currentColor;
-  border-radius: 999px;
-  font-size: 24px;
-  font-weight: 950;
-  text-transform: uppercase;
-}
-
 .session-recap-main h1 {
   margin: 0;
   max-width: 100%;
@@ -2719,11 +2708,6 @@ button.filter-tab.is-active {
 
 .session-recap-card.size-landscape .session-recap-main h1 {
   font-size: 46px;
-}
-
-.session-recap-card.size-landscape .session-recap-main p {
-  padding: 8px 12px;
-  font-size: 16px;
 }
 
 .session-recap-card.size-landscape .session-recap-stats {
