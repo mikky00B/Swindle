@@ -1135,6 +1135,7 @@ function RecentSessionsSection({
   const recap = recapCard?.session ?? null;
   const selectedSessions = sessionsInWindow(sessions, windowOption.days);
   const openings = recapCard?.stats.openings ?? [];
+  const ratingBreakdown = ratingBreakdownFromTracks(recapCard?.stats.rating_tracks ?? recap?.rating_tracks);
 
   return (
     <section className="sessions-section" aria-label="Daily Recaps">
@@ -1174,25 +1175,18 @@ function RecentSessionsSection({
             <strong>{recap.games_count} games</strong>
           </div>
           <h3>{recap.summary_headline}</h3>
-          <p>{recap.summary_subheadline}</p>
+          <p>{recapSummarySubheadline(recap.summary_subheadline)}</p>
           <dl className="story-facts">
             <div>
               <dt>Record</dt>
               <dd>{recordLabel(recap)}</dd>
             </div>
             <div>
-              <dt>Best story</dt>
-              <dd>{storyLabel(recap.best_story_type)}</dd>
-            </div>
-            <div>
               <dt>Opening</dt>
               <dd>{recap.most_common_opening ?? "Mixed openings"}</dd>
             </div>
-            <div>
-              <dt>Rating +/-</dt>
-              <dd>{formatRatingDelta(recap.rating_delta)}</dd>
-            </div>
           </dl>
+          <RatingDeltaGrid rows={ratingBreakdown} />
           <div className="suggested-actions">
             <button type="button" className="compact-button" onClick={() => setShowDetails((open) => !open)}>
               {showDetails ? "Hide" : "View"} {windowOption.label} details
@@ -1274,6 +1268,7 @@ function buildRecapWindowCard(
   const draws = selectedSessions.reduce((total, session) => total + session.draws_count, 0);
   const bestStory = bestStoryForSessions(selectedSessions);
   const ratingDelta = aggregateSessionRatingDelta(selectedSessions);
+  const ratingTracks = aggregateSessionRatingTracks(selectedSessions);
   const openings = combineSessionOpenings(selectedSessions);
   const mostCommonOpening = openings[0]?.name ?? "Mixed openings";
   const mood = windowOption.days === 1 ? (newest.mood ?? "Daily recap") : `${windowOption.label} recap`;
@@ -1285,7 +1280,7 @@ function buildRecapWindowCard(
   const summarySubheadline =
     windowOption.days === 1
       ? newest.summary_subheadline
-      : `${dateRange}. Best story: ${storyLabel(bestStory)}. Rating ${formatRatingDelta(ratingDelta)}.`;
+      : `${dateRange}. Rating ${formatRatingDelta(ratingDelta)}.`;
 
   const summary: SessionSummary = {
     id: `window-${windowOption.days}-${newest.id}`,
@@ -1310,6 +1305,7 @@ function buildRecapWindowCard(
     long_grind_count: sumSessionCount(selectedSessions, "long_grind_count"),
     giant_slayer_count: sumSessionCount(selectedSessions, "giant_slayer_count"),
     turning_point_count: sumSessionCount(selectedSessions, "turning_point_count"),
+    rating_tracks: ratingTracks,
   };
 
   return {
@@ -1320,9 +1316,9 @@ function buildRecapWindowCard(
     stats: {
       record: recordLabel(summary),
       games_count: gamesCount,
-      best_story: storyLabel(bestStory),
       most_common_opening: mostCommonOpening,
       openings,
+      rating_tracks: ratingTracks,
       rating_delta: ratingDelta,
     },
   };
@@ -1385,6 +1381,45 @@ function combineSessionOpenings(sessions: SessionSummary[]): SessionOpeningSumma
     .sort((left, right) => right.games - left.games || right.wins - left.wins || left.name.localeCompare(right.name));
 }
 
+function aggregateSessionRatingTracks(sessions: SessionSummary[]): SessionRatingTrack[] {
+  const grouped = new Map<string, SessionRatingTrack[]>();
+  for (const track of sessions.flatMap((session) => session.rating_tracks ?? [])) {
+    const key = ratingTrackKey(track);
+    grouped.set(key, [...(grouped.get(key) ?? []), track]);
+  }
+
+  return [...grouped.values()].map((group) => {
+    const orderedSnapshots = group
+      .flatMap((track) => [
+        ratingSnapshot(track.first_rating, track.first_played_at),
+        ratingSnapshot(track.last_rating, track.last_played_at),
+      ])
+      .filter((snapshot): snapshot is { rating: number; playedAt: number } => snapshot !== null)
+      .sort((left, right) => left.playedAt - right.playedAt);
+    const distinctSnapshots = orderedSnapshots.filter(
+      (snapshot, index) =>
+        index === 0 || snapshot.playedAt !== orderedSnapshots[index - 1].playedAt || snapshot.rating !== orderedSnapshots[index - 1].rating,
+    );
+    const inferredDelta =
+      distinctSnapshots.length >= 2
+        ? distinctSnapshots[distinctSnapshots.length - 1].rating - distinctSnapshots[0].rating
+        : group.some((track) => track.inferred_delta != null)
+          ? group.reduce((total, track) => total + (track.inferred_delta ?? 0), 0)
+          : null;
+    return {
+      platform: group[0].platform,
+      speed: group[0].speed,
+      explicit_delta: group.reduce((total, track) => total + (track.has_explicit ? track.explicit_delta : 0), 0),
+      has_explicit: group.some((track) => track.has_explicit),
+      first_rating: distinctSnapshots[0]?.rating ?? null,
+      last_rating: distinctSnapshots[distinctSnapshots.length - 1]?.rating ?? null,
+      first_played_at: null,
+      last_played_at: null,
+      inferred_delta: inferredDelta,
+    };
+  });
+}
+
 function aggregateSessionRatingDelta(sessions: SessionSummary[]): number | null {
   const tracks = sessions.flatMap((session) => session.rating_tracks ?? []);
   if (tracks.length === 0) {
@@ -1431,6 +1466,53 @@ function ratingSnapshot(rating?: number | null, playedAt?: string | null): { rat
   if (rating == null || !playedAt) return null;
   const time = dateTimeValue(playedAt);
   return time ? { rating, playedAt: time } : null;
+}
+
+type RatingBreakdownRow = {
+  speed: "rapid" | "blitz";
+  lichess: number | null;
+  chesscom: number | null;
+};
+
+function ratingBreakdownFromTracks(tracks: SessionRatingTrack[] | undefined): RatingBreakdownRow[] {
+  return (["rapid", "blitz"] as const).map((speed) => ({
+    speed,
+    lichess: combinedTrackDelta(tracks, "lichess", speed),
+    chesscom: combinedTrackDelta(tracks, "chesscom", speed),
+  }));
+}
+
+function combinedTrackDelta(
+  tracks: SessionRatingTrack[] | undefined,
+  platform: "lichess" | "chesscom",
+  speed: "rapid" | "blitz",
+): number | null {
+  const matches = (tracks ?? []).filter(
+    (track) => normalizeRatingPlatform(track.platform) === platform && (track.speed ?? "").toLowerCase() === speed,
+  );
+  if (matches.length === 0) return null;
+  let total = 0;
+  let hasDelta = false;
+  for (const track of matches) {
+    const delta = track.has_explicit ? track.explicit_delta : track.inferred_delta;
+    if (delta != null) {
+      total += delta;
+      hasDelta = true;
+    }
+  }
+  return hasDelta ? total : null;
+}
+
+function normalizeRatingPlatform(platform: string): "lichess" | "chesscom" | string {
+  const value = platform.toLowerCase();
+  if (value === "chess.com" || value === "chesscom") return "chesscom";
+  return value;
+}
+
+function recapSummarySubheadline(value: string | null | undefined): string | null {
+  if (!value) return null;
+  const cleaned = value.replace(/\s*Best story:\s*[^.]+\.?/i, "").replace(/\s{2,}/g, " ").trim();
+  return cleaned || null;
 }
 
 function sumSessionCount(sessions: SessionSummary[], key: keyof SessionSummary): number {
@@ -1653,6 +1735,7 @@ function SessionRecapCard({
   const normalizedTheme = normalizeShareCardTheme(theme);
   const normalizedSize = normalizeCardSize(size);
   const session = card.session;
+  const ratingBreakdown = ratingBreakdownFromTracks(card.stats.rating_tracks ?? session.rating_tracks);
   return (
     <div
       className={`session-recap-card theme-${normalizedTheme} size-${normalizedSize}`}
@@ -1680,15 +1763,8 @@ function SessionRecapCard({
           <dt>Games</dt>
           <dd>{card.stats.games_count}</dd>
         </div>
-        <div>
-          <dt>Best story</dt>
-          <dd>{card.stats.best_story ?? "None"}</dd>
-        </div>
-        <div>
-          <dt>Rating +/-</dt>
-          <dd>{formatRatingDelta(card.stats.rating_delta)}</dd>
-        </div>
       </dl>
+      <RatingDeltaGrid rows={ratingBreakdown} />
       <section className="session-recap-openings" aria-label="Openings played today">
         <div className="session-recap-openings-heading">
           <span>Openings today</span>
@@ -1704,6 +1780,25 @@ function SessionRecapCard({
       </section>
       <footer>swindle.app/{card.player.username}</footer>
     </div>
+  );
+}
+
+function RatingDeltaGrid({ rows }: { rows: RatingBreakdownRow[] }) {
+  return (
+    <section className="rating-delta-grid" aria-label="Rating changes by platform and time control">
+      <div className="rating-delta-heading">
+        <span>Rating +/-</span>
+        <strong>Lichess</strong>
+        <strong>Chess.com</strong>
+      </div>
+      {rows.map((row) => (
+        <div className="rating-delta-row" key={row.speed}>
+          <span>{row.speed}</span>
+          <strong>{formatRatingDelta(row.lichess)}</strong>
+          <strong>{formatRatingDelta(row.chesscom)}</strong>
+        </div>
+      ))}
+    </section>
   );
 }
 
@@ -2063,14 +2158,13 @@ function SessionDetailPage({ sessionId }: { sessionId: string }) {
           <header className="session-detail-hero">
             <p className="session-detail-kicker">Daily Recap</p>
             <h1>{detail.summary_headline}</h1>
-            {detail.summary_subheadline ? <p>{detail.summary_subheadline}</p> : null}
+            {recapSummarySubheadline(detail.summary_subheadline) ? <p>{recapSummarySubheadline(detail.summary_subheadline)}</p> : null}
           </header>
           <dl className="profile-stats session-detail-stats">
             <Stat label="Record" value={recordLabel(detail)} />
             <Stat label="Games" value={detail.games_count} />
-            <Stat label="Rating +/-" value={formatRatingDelta(detail.rating_delta)} />
-            <Stat label="Best story" value={storyLabel(detail.best_story_type)} />
           </dl>
+          <RatingDeltaGrid rows={ratingBreakdownFromTracks(detail.rating_tracks)} />
           <section className="session-openings-detail" aria-label="Openings played today">
             <div className="section-heading">
               <div>
