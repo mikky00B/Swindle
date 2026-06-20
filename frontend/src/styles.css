@@ -2406,7 +2406,7 @@ button.filter-tab.is-active {
 
 .rating-delta-grid {
   display: grid;
-  gap: 8px;
+  gap: 6px;
   min-width: 0;
 }
 
@@ -2431,7 +2431,7 @@ button.filter-tab.is-active {
 }
 
 .rating-delta-row {
-  padding: 10px 12px;
+  padding: 8px 12px;
   border: 1px solid #d8ded6;
   border-radius: 8px;
   background: rgb(255 255 255 / 58%);
@@ -2447,7 +2447,7 @@ button.filter-tab.is-active {
 }
 
 .rating-delta-row strong {
-  font-size: 22px;
+  font-size: 20px;
 }
 
 .session-recap-openings {
@@ -2638,7 +2638,7 @@ button.filter-tab.is-active {
 }
 
 .session-recap-card.size-story .rating-delta-row strong {
-  font-size: 30px;
+  font-size: 28px;
 }
 
 .session-recap-card.size-story .session-recap-opening-row {
