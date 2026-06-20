@@ -1469,13 +1469,13 @@ function ratingSnapshot(rating?: number | null, playedAt?: string | null): { rat
 }
 
 type RatingBreakdownRow = {
-  speed: "rapid" | "blitz";
+  speed: "rapid" | "blitz" | "bullet";
   lichess: number | null;
   chesscom: number | null;
 };
 
 function ratingBreakdownFromTracks(tracks: SessionRatingTrack[] | undefined): RatingBreakdownRow[] {
-  return (["rapid", "blitz"] as const).map((speed) => ({
+  return (["rapid", "blitz", "bullet"] as const).map((speed) => ({
     speed,
     lichess: combinedTrackDelta(tracks, "lichess", speed),
     chesscom: combinedTrackDelta(tracks, "chesscom", speed),
@@ -1485,7 +1485,7 @@ function ratingBreakdownFromTracks(tracks: SessionRatingTrack[] | undefined): Ra
 function combinedTrackDelta(
   tracks: SessionRatingTrack[] | undefined,
   platform: "lichess" | "chesscom",
-  speed: "rapid" | "blitz",
+  speed: "rapid" | "blitz" | "bullet",
 ): number | null {
   const matches = (tracks ?? []).filter(
     (track) => normalizeRatingPlatform(track.platform) === platform && (track.speed ?? "").toLowerCase() === speed,
