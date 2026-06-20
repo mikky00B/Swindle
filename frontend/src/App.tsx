@@ -1171,7 +1171,6 @@ function RecentSessionsSection({
       ) : (
         <article className="session-card session-window-card">
           <div className="session-card-top">
-            <span className="story-chip">{recap.mood ?? "Recap"}</span>
             <strong>{recap.games_count} games</strong>
           </div>
           <h3>{recap.summary_headline}</h3>
@@ -1751,7 +1750,6 @@ function SessionRecapCard({
         <strong>Daily Recap</strong>
       </div>
       <div className="session-recap-main">
-        <p>{session.mood ?? "Daily recap"}</p>
         <h1>{session.summary_headline}</h1>
       </div>
       <dl className="session-recap-stats">
