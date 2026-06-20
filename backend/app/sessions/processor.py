@@ -133,7 +133,7 @@ def _build_session_model(user_id: str, games: list[Game]) -> GameSession:
     rating_delta = _rating_delta(games)
     mood = _mood(len(games), wins, losses, story_counts)
     headline = _headline(len(games), wins, losses, draws, mood, best_story, rating_delta)
-    subheadline = _subheadline(best_story, wins, losses, draws)
+    subheadline = _subheadline(wins, losses, draws)
     now = datetime.now(timezone.utc)
     return GameSession(
         user_id=user_id,
@@ -278,11 +278,8 @@ def _opening_breakdown(games: list[Game]) -> list[dict[str, Any]]:
     return sorted(breakdown, key=lambda item: (-item["games"], -item["wins"], item["name"]))
 
 
-def _subheadline(best_story: GameStory | None, wins: int, losses: int, draws: int) -> str:
-    parts = [f"Record: {wins}W - {losses}L - {draws}D."]
-    if best_story:
-        parts.append(f"Best story: {_story_label(best_story.primary_story)}.")
-    return " ".join(parts)
+def _subheadline(wins: int, losses: int, draws: int) -> str:
+    return f"Record: {wins}W - {losses}L - {draws}D."
 
 
 def _story_label(value: str | None) -> str:
@@ -351,17 +348,18 @@ def _game_summary(game: Game | None) -> dict[str, Any] | None:
 def _session_share_card(recap: GameSession, links: list[GameSessionGame]) -> dict[str, Any]:
     username = _session_username(links)
     games = [link.game for link in links if link.game is not None]
+    rating_tracks = _rating_tracks(games)
     return {
         "kind": "session_recap",
         "template": "session_recap_square_v1",
         "player": {"username": username},
-        "session": _session_summary(recap),
+        "session": _session_summary(recap, rating_tracks=rating_tracks),
         "stats": {
             "record": f"{recap.wins_count}W - {recap.losses_count}L - {recap.draws_count}D",
             "games_count": recap.games_count,
-            "best_story": _story_label(recap.best_story_type),
             "most_common_opening": recap.most_common_opening,
             "openings": _opening_breakdown(games),
+            "rating_tracks": rating_tracks,
             "rating_delta": recap.rating_delta,
         },
     }

@@ -161,9 +161,9 @@ export type SessionShareCardData = {
   stats: {
     record: string;
     games_count: number;
-    best_story?: string | null;
     most_common_opening?: string | null;
     openings?: SessionOpeningSummary[];
+    rating_tracks?: SessionRatingTrack[];
     rating_delta?: number | null;
   };
 };

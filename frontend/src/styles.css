@@ -2404,6 +2404,52 @@ button.filter-tab.is-active {
   min-width: 0;
 }
 
+.rating-delta-grid {
+  display: grid;
+  gap: 8px;
+  min-width: 0;
+}
+
+.rating-delta-heading,
+.rating-delta-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 96px 110px;
+  gap: 10px;
+  align-items: center;
+}
+
+.rating-delta-heading {
+  color: #657169;
+  font-size: 14px;
+  font-weight: 950;
+  text-transform: uppercase;
+}
+
+.rating-delta-heading strong,
+.rating-delta-row strong {
+  justify-self: end;
+}
+
+.rating-delta-row {
+  padding: 10px 12px;
+  border: 1px solid #d8ded6;
+  border-radius: 8px;
+  background: rgb(255 255 255 / 58%);
+}
+
+.rating-delta-row span {
+  min-width: 0;
+  overflow: hidden;
+  font-weight: 950;
+  text-transform: capitalize;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.rating-delta-row strong {
+  font-size: 22px;
+}
+
 .session-recap-openings {
   display: grid;
   gap: 10px;
@@ -2544,11 +2590,13 @@ button.filter-tab.is-active {
 }
 
 .session-recap-card.theme-neon_blitz .session-recap-main span,
-.session-recap-card.theme-neon_blitz .session-recap-stats dt {
+.session-recap-card.theme-neon_blitz .session-recap-stats dt,
+.session-recap-card.theme-neon_blitz .rating-delta-heading {
   color: #b9c8ff;
 }
 
-.session-recap-card.theme-neon_blitz .session-recap-stats div {
+.session-recap-card.theme-neon_blitz .session-recap-stats div,
+.session-recap-card.theme-neon_blitz .rating-delta-row {
   border-color: rgb(37 247 208 / 34%);
   background: rgb(255 255 255 / 8%);
 }
@@ -2584,6 +2632,15 @@ button.filter-tab.is-active {
   grid-template-columns: 1fr;
 }
 
+.session-recap-card.size-story .rating-delta-heading,
+.session-recap-card.size-story .rating-delta-row {
+  grid-template-columns: minmax(0, 1fr) 132px 150px;
+}
+
+.session-recap-card.size-story .rating-delta-row strong {
+  font-size: 30px;
+}
+
 .session-recap-card.size-story .session-recap-opening-row {
   padding: 18px 20px;
 }
@@ -2615,6 +2672,31 @@ button.filter-tab.is-active {
 
 .session-recap-card.size-portrait .session-recap-opening-row strong {
   font-size: 28px;
+}
+
+.session-recap-card.size-landscape .rating-delta-grid {
+  grid-column: 2;
+  grid-row: 3;
+  align-self: start;
+  gap: 5px;
+}
+
+.session-recap-card.size-landscape .rating-delta-heading,
+.session-recap-card.size-landscape .rating-delta-row {
+  grid-template-columns: minmax(0, 1fr) 66px 76px;
+  gap: 7px;
+}
+
+.session-recap-card.size-landscape .rating-delta-heading {
+  font-size: 10px;
+}
+
+.session-recap-card.size-landscape .rating-delta-row {
+  padding: 6px 8px;
+}
+
+.session-recap-card.size-landscape .rating-delta-row strong {
+  font-size: 15px;
 }
 
 .session-recap-card.size-landscape {
@@ -2667,7 +2749,7 @@ button.filter-tab.is-active {
 
 .session-recap-card.size-landscape .session-recap-openings {
   grid-column: 2;
-  grid-row: 3;
+  grid-row: 4;
   align-self: end;
   gap: 6px;
 }
