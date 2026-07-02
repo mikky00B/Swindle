@@ -207,31 +207,3 @@ POST   /api/v1/posts/{post_id}/comments
 DELETE /api/v1/comments/{comment_id}
 ```
 
-## Deployment Notes
-
-V1 should be deployable on a VPS or small container setup:
-
-- PostgreSQL
-- Redis
-- FastAPI backend served by Uvicorn or Gunicorn/Uvicorn
-- Background worker for imports and story processing
-- Vite frontend built as static files
-- Nginx reverse proxy
-
-Deployment checklist:
-
-1. Set production environment values outside the repository.
-2. Run `alembic upgrade head` before starting the backend.
-3. Build the frontend with `VITE_API_BASE` pointed at the deployed API.
-4. Serve `frontend/dist` through Nginx or another static host.
-5. Proxy `/api` traffic to the backend service.
-6. Configure the Lichess OAuth redirect URI to match production.
-7. Keep `TOKEN_ENCRYPTION_KEY`, app secrets, and database credentials out of git.
-
-## Privacy Rules
-
-- Imported games remain private journal entries.
-- Suggested posts remain private until the user publishes.
-- Feed shows only public published posts from followed users.
-- Ignored suggestions and unpublished posts do not appear publicly.
-- Kudos and comments apply to public posts.
