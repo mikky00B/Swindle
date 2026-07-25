@@ -1,8 +1,8 @@
 # Swindle
 
-Swindle is a Lichess-first chess storytelling app. It imports a user's recent Lichess games, keeps them in a private chess journal, detects story-worthy moments, and turns selected games into polished chess activity cards.
+Swindle is a chess storytelling app. It imports a user's recent Lichess games, keeps them in a private chess journal, detects story-worthy moments, and turns selected games into polished chess activity cards.
 
-The product is not a chess playing site and is not a Lichess competitor. It is a social storytelling and visualization layer for games users already played.
+The product is not a chess playing site and is not a Lichess/chess.com competitor. It is a social storytelling and visualization layer for games users already played.
 
 ## V1 Promise
 
@@ -19,17 +19,6 @@ V1 focuses on:
 - In-app story cards and PNG share-card export.
 - Public profile, pull-based feed, follows, kudos, and comments.
 
-Out of scope for V1:
-
-- Chess.com integration.
-- Mobile apps.
-- Payments or subscriptions.
-- Push notifications.
-- Real-time Lichess streaming.
-- Global leaderboards.
-- Tournament features.
-- Game playing inside Swindle.
-- Deep Stockfish analysis for every imported game.
 
 ## Product Rules
 
