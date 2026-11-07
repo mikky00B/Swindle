@@ -35,7 +35,7 @@ jobs:
 
             echo "Updating backend dependencies..."
             cd backend
-            source venv/bin/activate
+            source .venv/bin/activate
 
             if [ -f requirements.txt ]; then
               pip install -r requirements.txt
