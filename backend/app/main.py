@@ -1,8 +1,10 @@
 from contextlib import asynccontextmanager
 
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
 
+from app.auth.routes import router as auth_router
 from app.core.config import get_settings
 from app.core.database import init_db
 from app.games.routes import router as games_router
@@ -33,6 +35,19 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+
+@app.middleware("http")
+async def csrf_origin_guard(request: Request, call_next):
+    # Cookie auth relies on SameSite=Lax; as a second layer, reject
+    # state-changing browser requests whose Origin is not an allowed frontend.
+    if request.method in {"POST", "PUT", "PATCH", "DELETE"}:
+        origin = request.headers.get("origin")
+        if origin and origin not in settings.allowed_origins:
+            return JSONResponse(status_code=403, content={"detail": "Cross-origin request blocked"})
+    return await call_next(request)
+
+
+app.include_router(auth_router, prefix=settings.api_v1_prefix)
 app.include_router(prototype_router, prefix=settings.api_v1_prefix)
 app.include_router(lichess_router, prefix=settings.api_v1_prefix)
 app.include_router(chesscom_router, prefix=settings.api_v1_prefix)

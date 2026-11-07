@@ -10,19 +10,7 @@ from sqlalchemy.orm import joinedload
 from app.core.database import get_session
 from app.integrations.lichess.service import ensure_local_user
 from app.models import Game, GameSession, GameSessionGame, GameStory, User
-
-STORY_PRIORITY = {
-    "rating_milestone": 110,
-    "swindle": 100,
-    "heartbreaker": 95,
-    "giant_slayer": 90,
-    "turning_point": 85,
-    "clean_game": 80,
-    "miniature": 70,
-    "long_grind": 60,
-    "opening_win": 50,
-    "daily_activity": 20,
-}
+from app.story.detectors import STORY_PRIORITY
 
 COUNTED_STORIES = {
     "swindle": "swindle_count",

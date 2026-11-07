@@ -4,7 +4,7 @@ from datetime import datetime, timezone
 from typing import Any
 
 import httpx
-from sqlalchemy import select
+from sqlalchemy import func, select
 
 from app.core.config import get_settings
 from app.core.database import get_session
@@ -31,7 +31,25 @@ def create_connect_url(user_id: str = LOCAL_USER_ID) -> str:
             OAuthState(
                 state=state,
                 code_verifier=verifier,
+                purpose="bind",
                 user_id=user_id,
+                expires_at=oauth_state_expiry(),
+            )
+        )
+    return build_authorize_url(state, code_challenge_s256(verifier))
+
+
+def create_lichess_login_url() -> str:
+    """OAuth URL for "Continue with Lichess" — no existing account required."""
+    state = generate_state()
+    verifier = generate_code_verifier()
+    with get_session() as session:
+        session.add(
+            OAuthState(
+                state=state,
+                code_verifier=verifier,
+                purpose="login",
+                user_id=None,
                 expires_at=oauth_state_expiry(),
             )
         )
@@ -61,9 +79,50 @@ async def complete_callback(code: str, state: str) -> dict[str, Any]:
         raise ValueError(f"Lichess account lookup failed ({exc.response.status_code}): {detail}") from exc
     except httpx.HTTPError as exc:
         raise ValueError("Could not reach Lichess while fetching the connected account.") from exc
+
+    if state_record.get("purpose") == "login":
+        user_id, created = resolve_or_create_lichess_user(account)
+        account_id = store_connected_account(user_id, token_payload, account)
+        return {
+            "purpose": "login",
+            "user_id": user_id,
+            "user_created": created,
+            "account_id": account_id,
+            "platform_username": account.get("username"),
+        }
+
     user_id = state_record["user_id"]
+    if not user_id:
+        raise ValueError("Invalid or expired OAuth state")
     account_id = store_connected_account(user_id, token_payload, account)
-    return {"account_id": account_id, "platform_username": account.get("username")}
+    return {"purpose": "bind", "account_id": account_id, "platform_username": account.get("username")}
+
+
+def resolve_or_create_lichess_user(account: dict[str, Any]) -> tuple[str, bool]:
+    """Find the user behind a Lichess identity, or create one on first sign-in."""
+    platform_user_id = str(account.get("id") or account.get("username"))
+    platform_username = str(account.get("username") or account.get("id"))
+    with get_session() as session:
+        existing_account = session.scalar(
+            select(ChessAccount).where(
+                ChessAccount.platform == "lichess",
+                ChessAccount.platform_user_id == platform_user_id,
+            )
+        )
+        if existing_account is not None:
+            return existing_account.user_id, False
+
+        base_username = platform_username[:80]
+        username = base_username
+        suffix = 1
+        while session.scalar(select(User).where(func.lower(User.username) == username.lower())) is not None:
+            suffix += 1
+            username = f"{base_username[:72]}-{suffix}"
+
+        user = User(username=username)
+        session.add(user)
+        session.flush()
+        return user.id, True
 
 
 async def exchange_code_for_token(code: str, code_verifier: str) -> dict[str, Any]:
@@ -165,6 +224,7 @@ def _consume_state(state: str) -> dict[str, Any] | None:
         state_data = {
             "state": record.state,
             "code_verifier": record.code_verifier,
+            "purpose": record.purpose or "bind",
             "user_id": record.user_id,
             "expires_at": record.expires_at,
         }

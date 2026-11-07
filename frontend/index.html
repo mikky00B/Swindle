@@ -4,6 +4,21 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Swindle</title>
+    <script>
+      // Canonical host: cookies are host-scoped, and localhost vs 127.0.0.1 are
+      // different cookie hosts. Force one origin so auth sessions and the
+      // Lichess OAuth round trip always stay consistent.
+      (function () {
+        if (window.location.hostname === "127.0.0.1") {
+          window.location.replace(
+            "http://localhost:" +
+              (window.location.port || "5173") +
+              window.location.pathname +
+              window.location.search
+          );
+        }
+      })();
+    </script>
   </head>
   <body>
     <div id="root"></div>

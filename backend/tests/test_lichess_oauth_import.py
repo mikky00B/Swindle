@@ -478,18 +478,21 @@ def test_analyze_updates_daily_game_into_swindle_with_key_position(monkeypatch) 
     assert game["story"]["primary_story"] == "daily_activity"
 
     response = client.post(f"/api/v1/games/{game['id']}/analyze")
+    detail = client.get(f"/api/v1/games/{game['id']}").json()
     card = client.get(f"/api/v1/games/{game['id']}/share-card").json()
 
     assert response.status_code == 200
-    assert response.json()["story"]["primary_story"] == "swindle"
-    assert response.json()["story"]["key_position_fen"]
+    assert response.json()["queued"] is True
+    assert detail["processing_status"] == "processed"
+    assert detail["story"]["primary_story"] == "swindle"
+    assert detail["story"]["key_position_fen"]
     assert card["story"]["primary_story"] == "swindle"
     assert card["board_position_source"] == "key_position"
     assert card["metrics"]["lowest_eval"] <= -5.0
     assert card["metrics"]["analysis_status"] in {"partial", "complete"}
     assert card["metrics"]["eval_points"] >= 2
-    assert response.json()["metrics"]["eval_points"] >= 2
-    assert response.json()["metrics"]["analysis_source"] == "lichess_cloud_eval"
+    assert detail["metrics"]["eval_points"] >= 2
+    assert detail["metrics"]["analysis_source"] == "lichess_cloud_eval"
     MockAsyncClient.payloads = None
 
 
@@ -515,10 +518,12 @@ def test_analyze_updates_daily_game_into_heartbreaker(monkeypatch) -> None:
     game = client.get("/api/v1/games").json()[0]
 
     response = client.post(f"/api/v1/games/{game['id']}/analyze")
+    detail = client.get(f"/api/v1/games/{game['id']}").json()
     card = client.get(f"/api/v1/games/{game['id']}/share-card").json()
 
     assert response.status_code == 200
-    assert response.json()["story"]["primary_story"] == "heartbreaker"
+    assert response.json()["queued"] is True
+    assert detail["story"]["primary_story"] == "heartbreaker"
     assert card["story"]["primary_story"] == "heartbreaker"
     assert card["board_position_source"] == "key_position"
     assert card["metrics"]["highest_eval"] >= 5.0
@@ -734,7 +739,7 @@ def test_private_journal_games_do_not_appear_on_public_profile(monkeypatch) -> N
 
     assert profile.status_code == 200
     assert profile.json()["posts"] == []
-    assert profile.json()["games_imported"] == 1
+    assert "games_imported" not in profile.json()
 
 
 def test_profile_endpoint_returns_only_public_posts(monkeypatch) -> None:

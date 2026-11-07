@@ -1,11 +1,16 @@
 from functools import lru_cache
 from pathlib import Path
 
-from pydantic import Field
+from pydantic import Field, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
 ROOT_DIR = Path(__file__).resolve().parents[3]
+
+DEVELOPMENT_DEFAULTS = {
+    "token_encryption_key": "dev-only-token-key",
+    "lichess_client_id": "swindle-local",
+}
 
 
 class Settings(BaseSettings):
@@ -28,6 +33,18 @@ class Settings(BaseSettings):
     database_url: str = Field(default="postgresql+psycopg://swindle:swindle@localhost:5432/swindle", alias="DATABASE_URL")
 
     model_config = SettingsConfigDict(env_file=(ROOT_DIR / ".env", ROOT_DIR / "backend" / ".env"), extra="ignore")
+
+    @model_validator(mode="after")
+    def _reject_development_defaults_in_production(self) -> "Settings":
+        if self.app_env != "production":
+            return self
+        insecure = [name for name, default in DEVELOPMENT_DEFAULTS.items() if getattr(self, name) == default]
+        if insecure:
+            joined = ", ".join(name.upper() for name in insecure)
+            raise ValueError(
+                f"Refusing to start with development defaults in production: set {joined} to real values."
+            )
+        return self
 
     @property
     def allowed_origins(self) -> list[str]:

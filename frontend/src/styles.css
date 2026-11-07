@@ -3295,3 +3295,371 @@ button.filter-tab.is-active {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 }
+
+/* ============================================================
+   Auth — sign in / create account page (src/components/auth/LoginPage.tsx)
+   ============================================================ */
+.login-page {
+  display: grid;
+  place-items: center;
+  min-height: 100vh;
+  min-height: 100svh;
+  padding: 32px 16px 48px;
+  background:
+    radial-gradient(900px 420px at 50% -120px, #ffffff 0%, rgba(255, 255, 255, 0) 70%),
+    #f6f3ec;
+}
+
+.login-shell {
+  display: grid;
+  gap: 18px;
+  justify-items: center;
+  width: min(460px, 100%);
+}
+
+.login-brand {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.login-logo-mark {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 38px;
+  height: 38px;
+  border-radius: 10px;
+  background: #17201b;
+  color: #ffffff;
+  font-size: 22px;
+  line-height: 1;
+}
+
+.login-logo {
+  font-size: 22px;
+}
+
+.login-card {
+  display: grid;
+  gap: 14px;
+  width: 100%;
+  padding: 30px;
+  background: #ffffff;
+  border: 1px solid #e3e0d4;
+  border-radius: 16px;
+  box-shadow: 0 18px 44px rgba(28, 30, 26, 0.09);
+}
+
+.login-intro {
+  display: grid;
+  gap: 8px;
+  margin-bottom: 4px;
+  text-align: center;
+}
+
+.login-kicker {
+  margin: 0;
+  color: #526159;
+  font-size: 12px;
+  font-weight: 950;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+}
+
+.login-intro h1 {
+  margin: 0;
+  font-size: 30px;
+  letter-spacing: -0.02em;
+  line-height: 1.05;
+}
+
+.login-sub {
+  margin: 0;
+  color: #526159;
+  font-size: 14px;
+  font-weight: 600;
+  line-height: 1.5;
+}
+
+.login-notice {
+  margin: 0;
+  padding: 10px 12px;
+  border: 1px solid rgba(82, 97, 89, 0.25);
+  border-radius: 10px;
+  background: rgba(82, 97, 89, 0.08);
+  color: #2c3a30;
+  font-size: 13px;
+  font-weight: 700;
+  text-align: center;
+}
+
+/* Primary action: Lichess OAuth (full-page redirect link) */
+.login-lichess {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 50px;
+  padding: 12px 16px;
+  border: 1px solid #17201b;
+  border-radius: 11px;
+  background: #17201b;
+  color: #ffffff;
+  font-weight: 900;
+  text-decoration: none;
+  transition: box-shadow 120ms ease, transform 120ms ease;
+}
+
+.login-lichess:hover,
+.login-lichess:focus-visible {
+  box-shadow: 0 10px 24px rgba(23, 32, 27, 0.22);
+  transform: translateY(-1px);
+}
+
+.login-divider {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  color: #526159;
+  font-size: 12px;
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+}
+
+.login-divider::before,
+.login-divider::after {
+  content: "";
+  flex: 1;
+  height: 1px;
+  background: #e3e0d4;
+}
+
+/* Secondary path: username + password, segmented sign in / register tabs */
+.login-mode-switch {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 4px;
+  padding: 4px;
+  border: 1px solid #e3e0d4;
+  border-radius: 11px;
+  background: #f6f3ec;
+}
+
+.login-tab {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 38px;
+  padding: 8px 10px;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  color: #526159;
+  font-weight: 800;
+  cursor: pointer;
+}
+
+.login-tab.is-active {
+  background: #ffffff;
+  color: #17201b;
+  box-shadow: 0 1px 3px rgba(28, 30, 26, 0.12);
+}
+
+.login-form {
+  display: grid;
+  gap: 6px;
+}
+
+.login-form label {
+  margin-top: 6px;
+  color: #526159;
+  font-size: 12px;
+  font-weight: 900;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.login-form input {
+  width: 100%;
+  min-height: 46px;
+  padding: 11px 13px;
+  border: 1px solid #d8d4c4;
+  border-radius: 10px;
+  background: #ffffff;
+  font: inherit;
+  transition: border-color 120ms ease, box-shadow 120ms ease;
+}
+
+.login-form input:focus {
+  outline: none;
+  border-color: #526159;
+  box-shadow: 0 0 0 3px rgba(82, 97, 89, 0.16);
+}
+
+.login-hint {
+  margin: 0;
+  color: #657169;
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.login-hint.is-warn {
+  color: #a2402c;
+}
+
+.login-submit {
+  margin-top: 10px;
+  min-height: 48px;
+  padding: 12px 16px;
+  border: 1px solid #17201b;
+  border-radius: 11px;
+  background: #ffffff;
+  color: #17201b;
+  font-weight: 900;
+  cursor: pointer;
+  transition: background 120ms ease, color 120ms ease;
+}
+
+.login-submit:hover:not(:disabled),
+.login-submit:focus-visible {
+  background: #17201b;
+  color: #ffffff;
+}
+
+.login-submit:disabled {
+  cursor: default;
+  opacity: 0.65;
+}
+
+/* Status line: busy/success text, red-tinted panel for errors */
+.login-status {
+  margin: 0;
+  color: #526159;
+  font-size: 13px;
+  font-weight: 700;
+  text-align: center;
+}
+
+.login-status.is-error {
+  padding: 10px 12px;
+  border: 1px solid rgba(162, 64, 44, 0.3);
+  border-radius: 10px;
+  background: rgba(162, 64, 44, 0.08);
+  color: #a2402c;
+}
+
+.login-status:empty {
+  display: none;
+}
+
+.login-footnote {
+  max-width: 380px;
+  margin: 0;
+  color: #526159;
+  font-size: 13px;
+  line-height: 1.5;
+  text-align: center;
+}
+
+.login-card a:focus-visible,
+.login-card button:focus-visible {
+  outline: 2px solid #17201b;
+  outline-offset: 2px;
+}
+
+@media (max-width: 480px) {
+  .login-page {
+    padding: 24px 14px 40px;
+  }
+
+  .login-card {
+    gap: 12px;
+    padding: 22px 18px;
+    border-radius: 14px;
+  }
+
+  .login-intro h1 {
+    font-size: 25px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .login-lichess {
+    transition: none;
+    transform: none;
+  }
+}
+
+/* ============================================================
+   Auth — TopNav account area (username chip + log out)
+   ============================================================ */
+.nav-auth {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  margin-left: 4px;
+  padding-left: 10px;
+  border-left: 1px solid #e3e0d4;
+}
+
+.nav-user {
+  display: inline-flex;
+  align-items: center;
+  max-width: 140px;
+  padding: 6px 10px;
+  border: 1px solid #e3e0d4;
+  border-radius: 999px;
+  background: #f6f3ec;
+  color: #1c1e1a;
+  font-size: 12px;
+  font-weight: 800;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.nav-logout {
+  min-height: 30px;
+  padding: 5px 11px;
+  border: 0;
+  border-radius: 999px;
+  background: transparent;
+  color: #526159;
+  font-size: 12px;
+  font-weight: 800;
+  cursor: pointer;
+  transition: background 120ms ease, color 120ms ease;
+}
+
+.nav-logout:hover,
+.nav-logout:focus-visible {
+  background: #17201b;
+  color: #ffffff;
+}
+
+@media (max-width: 768px) {
+  .nav-auth {
+    grid-column: 1 / -1;
+    gap: 8px;
+    margin-left: 0;
+    padding-left: 0;
+    border-left: 0;
+  }
+
+  .nav-user {
+    flex: 1;
+    justify-content: center;
+    min-width: 0;
+    min-height: 44px;
+    max-width: none;
+    border-radius: 8px;
+  }
+
+  .nav-logout {
+    min-height: 44px;
+    padding: 0 16px;
+    border: 1px solid #e3e0d4;
+    border-radius: 8px;
+  }
+}

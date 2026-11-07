@@ -8,7 +8,7 @@ export const LANDING_DEMO_CARDS: Array<{ name: string; card: ShareCardData }> = 
     card: demoCard({
       story: "swindle",
       badge: "The Swindle",
-      emoji: "SW",
+      emoji: "\u{1FA84}",
       headline: "Completely lost, somehow walked out with the full point.",
       subheadline: "A 42-move Sicilian turned into chaos.",
       result: "win",

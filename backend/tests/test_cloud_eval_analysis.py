@@ -104,3 +104,23 @@ def test_transient_cloud_eval_failure_does_not_poison_cache(monkeypatch) -> None
 
     assert result is None
     assert rows == []
+
+
+def test_unavailable_cloud_eval_result_is_cached(monkeypatch) -> None:
+    fen = "rnbqkbnr/pppp1ppp/8/4p3/4P3/8/PPPP1PPP/RNBQKBNR w KQkq - 0 2"
+    calls = {"count": 0}
+
+    def fake_fetch(target_fen: str) -> dict:
+        calls["count"] += 1
+        raise CloudEvalUnavailable("cloud eval unavailable", cacheable=True)
+
+    monkeypatch.setattr(analysis, "fetch_cloud_eval", fake_fetch)
+
+    with get_session() as session:
+        assert get_or_fetch_cloud_eval(session, fen) is None
+        assert get_or_fetch_cloud_eval(session, fen) is None
+        rows = session.scalars(select(EvalCache)).all()
+
+    assert calls["count"] == 1
+    assert len(rows) == 1
+    assert rows[0].source == "unavailable"

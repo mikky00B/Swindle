@@ -27,3 +27,25 @@ def test_compute_final_fen_from_lichess_moves() -> None:
 
 def test_compute_final_fen_from_invalid_moves_returns_none() -> None:
     assert compute_final_fen_from_moves("e4 definitely-not-a-move") is None
+
+
+def test_find_move_squares_returns_origin_and_destination() -> None:
+    from app.games.pgn_parser import find_move_squares
+
+    moves = "e4 c5 Nf3 d6 d4 cxd4"
+
+    assert find_move_squares(moves, 1, "e4") == ("e2", "e4")
+    assert find_move_squares(moves, 2, "Nf3") == ("g1", "f3")
+    assert find_move_squares(moves, 3, "cxd4") == ("c5", "d4")
+    assert find_move_squares(moves, 9, "e4") is None
+
+
+def test_extract_clock_metrics_uses_user_color_clocks() -> None:
+    from app.games.clocks import extract_clock_metrics
+
+    # Centiseconds remaining after each ply: white, black, white, black...
+    payload = {"clocks": [18000, 17500, 12000, 900, 300, 15000]}
+    assert extract_clock_metrics(payload, "white") == (3, 1)
+    assert extract_clock_metrics(payload, "black") == (9, 1)
+    assert extract_clock_metrics(payload, None) == (None, None)
+    assert extract_clock_metrics({}, "white") == (None, None)

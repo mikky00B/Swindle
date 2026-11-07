@@ -122,7 +122,7 @@ function post(id: string): PublishedPost {
       id: `${id}-story`,
       primary_story: "swindle",
       badge_label: "The Swindle",
-      badge_emoji: "SW",
+      badge_emoji: "\u{1FA84}",
       headline: "Completely lost, somehow won.",
       interesting_score: 0.9,
       key_position_fen: "8/8/8/8/8/8/8/8 w - - 0 1",

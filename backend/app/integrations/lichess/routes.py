@@ -1,10 +1,13 @@
 from __future__ import annotations
 
+import logging
 from urllib.parse import urlencode
 
 from fastapi import APIRouter, HTTPException, Request
 from fastapi.responses import RedirectResponse
 
+from app.auth.dependencies import require_user_id
+from app.auth.service import create_auth_session, set_session_cookie
 from app.core.config import get_settings
 from app.integrations.lichess.schemas import DisconnectResponse, LichessStatus
 from app.integrations.lichess.service import (
@@ -14,28 +17,31 @@ from app.integrations.lichess.service import (
     get_connected_account,
 )
 
+logger = logging.getLogger("swindle.lichess")
+
 router = APIRouter(prefix="/integrations/lichess", tags=["lichess"])
 
 
 def _get_user_id(request: Request) -> str:
-    """Extract user_id from X-Session-Id header (browser session isolation)"""
-    session_id = request.query_params.get("session_id")
-    if session_id:
-        return session_id
-    return request.headers.get("X-Session-Id", "local-dev-user")
+    """Resolve the signed-in user; `?session_id=` stays a dev-only convenience."""
+    if get_settings().app_env != "production":
+        session_id = request.query_params.get("session_id")
+        if session_id:
+            return session_id
+    return require_user_id(request)
 
 
 @router.get("/connect")
 async def connect_lichess(request: Request) -> RedirectResponse:
     user_id = _get_user_id(request)
-    print(f"[CONNECT] Starting OAuth for user_id: {user_id}")
+    logger.info("Starting Lichess OAuth for user_id=%s", user_id)
     return RedirectResponse(create_connect_url(user_id), status_code=302)
 
 
 @router.get("/connect-url")
 async def lichess_connect_url(request: Request) -> dict[str, str]:
     user_id = _get_user_id(request)
-    print(f"[CONNECT] Creating OAuth URL for user_id: {user_id}")
+    logger.info("Creating Lichess OAuth URL for user_id=%s", user_id)
     return {"url": create_connect_url(user_id)}
 
 
@@ -43,18 +49,24 @@ async def lichess_connect_url(request: Request) -> dict[str, str]:
 async def lichess_callback(code: str | None = None, state: str | None = None, error: str | None = None) -> RedirectResponse:
     settings = get_settings()
     if error:
-        print(f"[CALLBACK] OAuth error: {error}")
+        logger.warning("Lichess OAuth callback returned error: %s", error)
         return _frontend_redirect({"lichess": "error", "reason": error})
     if not code or not state:
         raise HTTPException(status_code=400, detail="Missing OAuth callback code or state")
 
     try:
-        print(f"[CALLBACK] Processing OAuth callback with state: {state[:20]}...")
+        logger.info("Processing Lichess OAuth callback")
         result = await complete_callback(code, state)
-        print(f"[CALLBACK] OAuth callback succeeded. Username: {result.get('platform_username')}")
+        logger.info("Lichess OAuth callback succeeded for username=%s", result.get("platform_username"))
     except ValueError as exc:
-        print(f"[CALLBACK] OAuth callback failed: {exc}")
+        logger.warning("Lichess OAuth callback failed: %s", exc)
         return _frontend_redirect({"lichess": "error", "reason": str(exc)})
+
+    if result.get("purpose") == "login":
+        # Continue with Lichess: sign the user in right on the callback.
+        response = _frontend_redirect({"lichess": "connected", "username": result["platform_username"]})
+        set_session_cookie(response, create_auth_session(result["user_id"]))
+        return response
 
     return _frontend_redirect({"lichess": "connected", "username": result["platform_username"]})
 
@@ -78,10 +90,14 @@ async def lichess_status(request: Request) -> LichessStatus:
 async def lichess_disconnect(request: Request) -> DisconnectResponse:
     user_id = _get_user_id(request)
     disconnected = disconnect_account(user_id)
-    print(f"[DISCONNECT] user_id: {user_id}, disconnected: {disconnected}")
+    logger.info("Lichess disconnect for user_id=%s: disconnected=%s", user_id, disconnected)
     return DisconnectResponse(disconnected=disconnected)
 
 
 def _frontend_redirect(params: dict[str, str | None]) -> RedirectResponse:
+    # Land back in the journal, where OAuth was started from.
     query = urlencode({key: value for key, value in params.items() if value})
-    return RedirectResponse(f"{get_settings().frontend_origin}?{query}", status_code=302)
+    target = f"{get_settings().frontend_origin.rstrip('/')}/journal"
+    if query:
+        target = f"{target}?{query}"
+    return RedirectResponse(target, status_code=302)

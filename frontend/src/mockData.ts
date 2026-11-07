@@ -22,7 +22,7 @@ export const MOCK_CARD: ShareCardData = {
     primary_story: "swindle",
     secondary_story: "giant_slayer",
     badge_label: "The Swindle",
-    badge_emoji: "SW",
+    badge_emoji: "\u{1FA84}",
     headline: "Completely lost, somehow walked out with the full point.",
     subheadline: "The game flipped around move 31.",
     key_move_number: 31,

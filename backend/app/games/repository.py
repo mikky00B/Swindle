@@ -1,20 +1,25 @@
 from __future__ import annotations
 
+import logging
 from datetime import datetime, timezone
 from typing import Any
 
-from sqlalchemy import select
+from sqlalchemy import exists, select
 from sqlalchemy.orm import joinedload
 
 from app.core.database import get_session
 from app.games.analysis import analyze_game_with_cloud_eval, metrics_from_mock_user_evals
+from app.games.clocks import extract_clock_metrics
 from app.games.pgn_parser import compute_final_fen_from_moves, compute_final_fen_from_pgn
 from app.games.schemas import GameMetrics, ParsedGame
 from app.integrations.lichess.service import ensure_local_user
+from app.sessions.processor import rebuild_user_sessions
 from app.models import Game, GameMetric, GameStory, PublishedPost, SuggestedPost
 from app.share_cards.schemas import ShareCardData, build_share_card_data
 from app.story.processor import generate_story
 from app.story.schemas import GameStory as StorySchema
+
+logger = logging.getLogger("swindle.games")
 
 
 def save_imported_game(
@@ -74,7 +79,15 @@ def save_imported_game(
         session.add(story_model)
         session.flush()
         _sync_suggestion_for_story(session, story_model)
-        session.add(GameMetric(game_id=game.id, analysis_source="metadata_only"))
+        lowest_clock, under_time_pressure = extract_clock_metrics(raw_payload, parsed_game.user_color)
+        session.add(
+            GameMetric(
+                game_id=game.id,
+                analysis_source="metadata_only",
+                user_lowest_clock_seconds=lowest_clock,
+                moves_under_time_pressure=under_time_pressure,
+            )
+        )
         return True, game.id
 
 
@@ -172,11 +185,14 @@ def reprocess_game(game_id: str, user_id: str, *, with_eval: bool = False) -> di
         story = generate_story(parsed, metrics)
         share_card = build_share_card_data(parsed, story, metrics, _player_username(game), game.platform)
 
-        if with_eval:
-            if game.metrics is None:
-                game.metrics = GameMetric(game_id=game.id)
-                session.flush()
+        if game.metrics is None:
+            game.metrics = GameMetric(game_id=game.id)
+            session.flush()
+        if metrics is not None:
             _update_metric_model(game.metrics, metrics)
+        lowest_clock, under_time_pressure = extract_clock_metrics(game.raw_payload, game.user_color)
+        game.metrics.user_lowest_clock_seconds = lowest_clock
+        game.metrics.moves_under_time_pressure = under_time_pressure
 
         if game.story is None:
             game.story = _story_model(game.id, user_id, share_card.story, share_card)
@@ -230,6 +246,32 @@ def reprocess_all_games(user_id: str) -> dict[str, int]:
         if reprocess_game(game_id, user_id) is not None:
             processed += 1
     return {"processed": processed}
+
+
+def queue_game_analysis(game_id: str, user_id: str) -> bool:
+    """Mark a game as queued for cloud-eval analysis. Returns False if not found."""
+    with get_session() as session:
+        game = session.scalar(select(Game).where(Game.id == game_id, Game.user_id == user_id))
+        if game is None:
+            return False
+        game.processing_status = "engine_processing"
+        game.updated_at = datetime.now(timezone.utc)
+    return True
+
+
+def run_game_analysis_job(game_id: str, user_id: str) -> None:
+    """Run cloud-eval analysis in the background (executed on a worker thread)."""
+    try:
+        result = reprocess_game(game_id, user_id, with_eval=True)
+        if result is None:
+            return
+        rebuild_user_sessions(user_id)
+    except Exception:
+        logger.exception("Background cloud-eval analysis failed for game %s", game_id)
+        with get_session() as session:
+            game = session.get(Game, game_id)
+            if game is not None:
+                game.processing_status = "failed"
 
 
 def list_suggested_stories(user_id: str) -> list[dict[str, Any]]:
@@ -402,6 +444,8 @@ def _metrics_to_dict(metric: GameMetric | None) -> dict[str, Any]:
         "turning_point_move": metric.turning_point_move,
         "turning_point_fen": metric.turning_point_fen,
         "turning_point_san": metric.turning_point_san,
+        "user_lowest_clock_seconds": metric.user_lowest_clock_seconds,
+        "moves_under_time_pressure": metric.moves_under_time_pressure,
         "analysis_depth": metric.analysis_depth,
         "analysis_source": metric.analysis_source,
         "analysis_status": metric.analysis_status,
@@ -478,8 +522,20 @@ def _published_post_summary(post: PublishedPost | None) -> dict[str, Any] | None
 
 
 def _ensure_missing_suggestions(session, user_id: str) -> None:
-    stories = session.scalars(select(GameStory).where(GameStory.user_id == user_id)).all()
-    for story in stories:
+    # Only backfill stories that have no suggestion row yet; rows that already
+    # exist are maintained at story-generation time.
+    missing = session.scalars(
+        select(GameStory).where(
+            GameStory.user_id == user_id,
+            ~exists(
+                select(SuggestedPost.id).where(
+                    SuggestedPost.game_story_id == GameStory.id,
+                    SuggestedPost.user_id == user_id,
+                )
+            ),
+        )
+    ).all()
+    for story in missing:
         _sync_suggestion_for_story(session, story)
     session.flush()
 

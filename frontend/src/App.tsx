@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState, type CSSProperties, type FormEvent, type ReactNode, type RefObject } from "react";
+import { LoginPage } from "./components/auth/LoginPage";
 import { ShareCard } from "./components/cards/ShareCard";
 import { ChessBoard } from "./components/chess/ChessBoard";
 import { LANDING_DEMO_CARDS } from "./data/demoCards";
@@ -10,6 +11,7 @@ import {
   createStoryFromPgn,
   disconnectChessCom,
   disconnectLichess,
+  fetchAuthMe,
   followProfile,
   getChessComStatus,
   getImportedGameShareCard,
@@ -28,6 +30,7 @@ import {
   listJournalGames,
   listSessions,
   listSuggestedStories,
+  logoutAuth,
   publishStoryCard,
   rebuildSessions,
   reprocessAllJournalGames,
@@ -36,6 +39,7 @@ import {
   resetIgnoredSuggestions,
   unfollowProfile,
   unpublishStoryPost,
+  type AuthUser,
 } from "./lib/api";
 import { exportElementAsPng } from "./lib/exportImage";
 import {
@@ -97,6 +101,9 @@ export function App() {
   if (route.kind === "landing") {
     return <LandingPage />;
   }
+  if (route.kind === "login") {
+    return <LoginPage />;
+  }
   if (route.kind === "profile") {
     return <PublicProfilePage username={route.username} />;
   }
@@ -133,13 +140,15 @@ export function App() {
   const cardRef = useRef<HTMLElement | null>(null);
   const sessionCardRef = useRef<HTMLElement | null>(null);
   const mobilePreviewRef = useRef<HTMLElement>(null);
+  const { user: authUser, loaded: authLoaded } = useAuthUser();
 
   useEffect(() => {
+    if (!authLoaded || !authUser) return;
     const params = new URLSearchParams(window.location.search);
     const lichess = params.get("lichess");
     const reason = params.get("reason");
     const usernameParam = params.get("username");
-    
+
     // Handle OAuth callback messages but don't use them as source of truth
     if (lichess === "error") {
       setStatus(reason ? `Lichess connection failed: ${reason}` : "Lichess connection failed");
@@ -153,10 +162,10 @@ export function App() {
       }, 300);
       return;
     }
-    
+
     // Always fetch fresh state from server
     void initializeApp();
-  }, []);
+  }, [authLoaded, authUser]);
 
   async function initializeApp(options: { autoImportIfEmpty?: boolean } = {}) {
     try {
@@ -339,12 +348,24 @@ export function App() {
     setStatus("Analyzing with Lichess cloud eval...");
     try {
       await analyzeJournalGame(gameId);
+      // Analysis now runs in the background; poll until it settles.
+      const deadline = Date.now() + 120_000;
+      let gameStatus = "engine_processing";
+      while (gameStatus === "engine_processing" && Date.now() < deadline) {
+        await new Promise((resolve) => setTimeout(resolve, 2000));
+        const polled = await getJournalGameDetail(gameId);
+        gameStatus = polled.processing_status;
+      }
       const cardData = await loadGameAndCard(gameId);
       const [games, suggestions, nextSessions] = await loadJournalLists();
       setJournal(games);
       setSuggestedStories(suggestions);
       setSessions(nextSessions);
-      setStatus(analysisStatusMessage(cardData));
+      setStatus(
+        gameStatus === "failed"
+          ? "Cloud eval analysis failed"
+          : analysisStatusMessage(cardData),
+      );
     } catch (error) {
       setStatus(error instanceof Error ? `Cloud eval analysis failed: ${error.message}` : "Cloud eval analysis failed");
     }
@@ -510,6 +531,10 @@ export function App() {
       return selectedCard;
     }
     return card;
+  }
+
+  if (authLoaded && !authUser) {
+    return <LoginPage notice="Sign in to open your chess journal." />;
   }
 
   return (
@@ -1918,7 +1943,9 @@ function LandingPage() {
               <a href="/journal">Journal</a>
               {lichessStatus?.platform_username ? <a href={profilePath(lichessStatus.platform_username)}>Profile</a> : null}
             </>
-          ) : null}
+          ) : (
+            <a href="/login">Log in</a>
+          )}
           <button type="button" onClick={connectLichess}>
             Connect Lichess
           </button>
@@ -1930,7 +1957,7 @@ function LandingPage() {
           <p className="landing-kicker">PGNs show the moves. Swindle shows the story.</p>
           <h1>Your chess games have stories.</h1>
           <p>
-            Swindle turns your Lichess games into beautiful story cards from ridiculous escapes to painful heartbreakers,
+            Swindle turns your chess games across platforms into beautiful story cards from ridiculous escapes to painful heartbreakers,
             giant-slaying wins, and long endgame grinds.
           </p>
           <div className="landing-actions">
@@ -2318,7 +2345,6 @@ function PublicProfilePage({ username }: { username: string }) {
         <Stat label="Wins shown" value={profile.wins_shown} />
         <Stat label="Losses shown" value={profile.losses_shown} />
         <Stat label="Common story" value={storyLabel(profile.common_story)} />
-        <Stat label="Games imported" value={profile.games_imported ?? 0} />
       </section>
       <section className="public-post-grid" aria-label="Published story cards">
         {profile.posts.length === 0 ? (
@@ -2683,6 +2709,31 @@ function PublicShell({
   );
 }
 
+function useAuthUser(): { user: AuthUser | null; loaded: boolean } {
+  const [user, setUser] = useState<AuthUser | null>(null);
+  const [loaded, setLoaded] = useState(false);
+
+  useEffect(() => {
+    let cancelled = false;
+    void fetchAuthMe()
+      .then((value) => {
+        if (cancelled) return;
+        setUser(value);
+        setLoaded(true);
+      })
+      .catch(() => {
+        if (cancelled) return;
+        setUser(null);
+        setLoaded(true);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  return { user, loaded };
+}
+
 function TopNav({
   title,
   activePage,
@@ -2697,7 +2748,18 @@ function TopNav({
   children?: ReactNode;
 }) {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+  const { user: authUser } = useAuthUser();
   const menuId = `top-nav-menu-${activePage}`;
+
+  async function handleLogout() {
+    try {
+      await logoutAuth();
+    } catch {
+      // Clearing the local state is enough even if the server call fails.
+    }
+    // The signed-out flag lets the login page show a quiet confirmation.
+    window.location.assign("/login?signedout=1");
+  }
 
   return (
     <nav className="top-nav">
@@ -2726,6 +2788,18 @@ function TopNav({
             </a>
           ),
         )}
+        {authUser ? (
+          <span className="nav-auth">
+            <span className="nav-user">{authUser.username}</span>
+            <button type="button" className="nav-logout" onClick={handleLogout}>
+              Log out
+            </button>
+          </span>
+        ) : (
+          <a className="tab" href="/login">
+            Log in
+          </a>
+        )}
         {children}
       </div>
     </nav>
@@ -2743,6 +2817,7 @@ function Stat({ label, value }: { label: string; value: string | number }) {
 
 function currentRoute():
   | { kind: "landing" }
+  | { kind: "login" }
   | { kind: "journal" }
   | { kind: "feed" }
   | { kind: "session"; sessionId: string }

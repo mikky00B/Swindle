@@ -87,6 +87,51 @@ def compute_final_fen_from_pgn(pgn: str | None) -> str | None:
     return game.end().board().fen()
 
 
+def find_move_squares(pgn: str | None, move_number: int, san: str) -> tuple[str, str] | None:
+    """Find the from/to squares of the move played with `san` in `move_number`."""
+    moves = _mainline_moves(pgn)
+    if moves is None:
+        return None
+    wanted = _base_san(san)
+    board = chess.Board()
+    for move in moves:
+        try:
+            current_san = board.san(move)
+        except AssertionError:
+            current_san = ""
+        matches = board.fullmove_number == move_number and _base_san(current_san) == wanted
+        origin = chess.square_name(move.from_square)
+        destination = chess.square_name(move.to_square)
+        board.push(move)
+        if matches:
+            return (origin, destination)
+    return None
+
+
+def _mainline_moves(pgn: str | None) -> list[chess.Move] | None:
+    """Return the game's mainline moves, or None when the moves are invalid."""
+    board = chess.Board()
+    moves: list[chess.Move] = []
+    pgn_game = chess.pgn.read_game(StringIO(pgn or ""))
+    if pgn_game is not None:
+        return list(pgn_game.mainline_moves())
+    if pgn:
+        for token in pgn.split():
+            token = token.strip()
+            if _ignore_move_token(token):
+                continue
+            try:
+                moves.append(board.parse_san(token))
+                board.push(moves[-1])
+            except ValueError:
+                return None
+    return moves
+
+
+def _base_san(san: str) -> str:
+    return san.rstrip("+#")
+
+
 def count_moves_from_san(moves: str | None) -> int:
     if not moves or not moves.strip():
         return 0

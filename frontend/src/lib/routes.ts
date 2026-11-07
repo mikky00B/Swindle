@@ -1,5 +1,6 @@
 export type AppRoute =
   | { kind: "landing" }
+  | { kind: "login" }
   | { kind: "journal" }
   | { kind: "feed" }
   | { kind: "session"; sessionId: string }
@@ -7,6 +8,9 @@ export type AppRoute =
   | { kind: "post"; postId: string };
 
 export function routeFromPath(path: string): AppRoute {
+  if (path === "/login") {
+    return { kind: "login" };
+  }
   if (path === "/journal") {
     return { kind: "journal" };
   }

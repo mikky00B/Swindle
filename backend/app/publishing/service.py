@@ -106,7 +106,6 @@ def get_public_profile(username: str, viewer_user_id: str | None = None) -> dict
             "wins_shown": sum(1 for post in posts if post.game and post.game.result == "win"),
             "losses_shown": sum(1 for post in posts if post.game and post.game.result == "loss"),
             "common_story": _most_common_story_type(posts),
-            "games_imported": session.scalar(select(func.count()).select_from(Game).where(Game.user_id == user.id)) or 0,
             "posts": [_post_to_dict(session, post, include_share_card=False, viewer_user_id=viewer_user_id) for post in posts],
         }
 

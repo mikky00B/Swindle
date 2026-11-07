@@ -15,7 +15,7 @@ import type {
   SocialCounts,
 } from "../types";
 
-const API_BASE = import.meta.env.VITE_API_BASE ?? "http://localhost:8000/api/v1";
+const API_BASE = import.meta.env.VITE_API_BASE ?? "/api/v1";
 const SESSION_STORAGE_KEY = "swindle-session-id";
 
 // Keep one browser identity across tabs and OAuth redirects.
@@ -40,8 +40,49 @@ function makeHeaders(additional: Record<string, string> = {}): Record<string, st
   };
 }
 
+// Send cookies with every request so cookie-based sign-in works across origins.
+async function apiFetch(url: string, init: RequestInit = {}): Promise<Response> {
+  return fetch(url, { credentials: "include", ...init });
+}
+
+export type AuthUser = { id: string; username: string };
+
+export async function fetchAuthMe(): Promise<AuthUser | null> {
+  const response = await apiFetch(`${API_BASE}/auth/me`, { headers: makeHeaders() });
+  if (!response.ok) {
+    return null;
+  }
+  return response.json();
+}
+
+export async function loginAuth(username: string, password: string): Promise<AuthUser> {
+  const response = await apiFetch(`${API_BASE}/auth/login`, {
+    method: "POST",
+    headers: makeHeaders({ "Content-Type": "application/json" }),
+    body: JSON.stringify({ username, password }),
+  });
+  return readJson(response, "Could not sign in");
+}
+
+export async function registerAuth(username: string, password: string): Promise<AuthUser> {
+  const response = await apiFetch(`${API_BASE}/auth/register`, {
+    method: "POST",
+    headers: makeHeaders({ "Content-Type": "application/json" }),
+    body: JSON.stringify({ username, password }),
+  });
+  return readJson(response, "Could not create account");
+}
+
+export async function logoutAuth(): Promise<void> {
+  const response = await apiFetch(`${API_BASE}/auth/logout`, {
+    method: "POST",
+    headers: makeHeaders(),
+  });
+  await readJson(response, "Could not sign out");
+}
+
 export async function createStoryFromPgn(pgn: string, username: string): Promise<ShareCardData> {
-  const response = await fetch(`${API_BASE}/prototype/pgn-story`, {
+  const response = await apiFetch(`${API_BASE}/prototype/pgn-story`, {
     method: "POST",
     headers: makeHeaders({
       "Content-Type": "application/json",
@@ -61,18 +102,25 @@ export async function createStoryFromPgn(pgn: string, username: string): Promise
 }
 
 export function lichessConnectUrl(): string {
-  return `${API_BASE}/integrations/lichess/connect?session_id=${encodeURIComponent(getSessionId())}`;
+  // Identity comes from the auth session cookie during the top-level redirect;
+  // no session id parameter needed.
+  return `${API_BASE}/integrations/lichess/connect`;
+}
+
+export function lichessLoginUrl(): string {
+  // "Continue with Lichess": creates the account on first sign-in.
+  return `${API_BASE}/auth/lichess/start`;
 }
 
 export async function getLichessStatus(): Promise<LichessStatus> {
-  const response = await fetch(`${API_BASE}/integrations/lichess/status`, {
+  const response = await apiFetch(`${API_BASE}/integrations/lichess/status`, {
     headers: makeHeaders(),
   });
   return readJson(response, "Could not load Lichess status");
 }
 
 export async function disconnectLichess(): Promise<void> {
-  const response = await fetch(`${API_BASE}/integrations/lichess/disconnect`, {
+  const response = await apiFetch(`${API_BASE}/integrations/lichess/disconnect`, {
     method: "POST",
     headers: makeHeaders(),
   });
@@ -80,7 +128,7 @@ export async function disconnectLichess(): Promise<void> {
 }
 
 export async function importLatestLichessGames(): Promise<ImportResponse> {
-  const response = await fetch(`${API_BASE}/games/import/lichess`, {
+  const response = await apiFetch(`${API_BASE}/games/import/lichess`, {
     method: "POST",
     headers: makeHeaders(),
   });
@@ -88,14 +136,14 @@ export async function importLatestLichessGames(): Promise<ImportResponse> {
 }
 
 export async function getChessComStatus(): Promise<ChessComStatus> {
-  const response = await fetch(`${API_BASE}/integrations/chesscom/status`, {
+  const response = await apiFetch(`${API_BASE}/integrations/chesscom/status`, {
     headers: makeHeaders(),
   });
   return readJson(response, "Could not load Chess.com status");
 }
 
 export async function addChessComUsername(username: string): Promise<ChessComStatus> {
-  const response = await fetch(`${API_BASE}/integrations/chesscom/link`, {
+  const response = await apiFetch(`${API_BASE}/integrations/chesscom/link`, {
     method: "POST",
     headers: makeHeaders({
       "Content-Type": "application/json",
@@ -106,7 +154,7 @@ export async function addChessComUsername(username: string): Promise<ChessComSta
 }
 
 export async function disconnectChessCom(): Promise<void> {
-  const response = await fetch(`${API_BASE}/integrations/chesscom/disconnect`, {
+  const response = await apiFetch(`${API_BASE}/integrations/chesscom/disconnect`, {
     method: "POST",
     headers: makeHeaders(),
   });
@@ -114,7 +162,7 @@ export async function disconnectChessCom(): Promise<void> {
 }
 
 export async function importLatestChessComGames(): Promise<ImportResponse> {
-  const response = await fetch(`${API_BASE}/games/import/chesscom`, {
+  const response = await apiFetch(`${API_BASE}/games/import/chesscom`, {
     method: "POST",
     headers: makeHeaders(),
   });
@@ -122,21 +170,21 @@ export async function importLatestChessComGames(): Promise<ImportResponse> {
 }
 
 export async function listJournalGames(): Promise<JournalGame[]> {
-  const response = await fetch(`${API_BASE}/games`, {
+  const response = await apiFetch(`${API_BASE}/games`, {
     headers: makeHeaders(),
   });
   return readJson(response, "Could not load journal");
 }
 
 export async function listSuggestedStories(): Promise<JournalGame[]> {
-  const response = await fetch(`${API_BASE}/stories/suggested`, {
+  const response = await apiFetch(`${API_BASE}/stories/suggested`, {
     headers: makeHeaders(),
   });
   return readJson(response, "Could not load suggested stories");
 }
 
 export async function ignoreSuggestedStory(storyId: string): Promise<void> {
-  const response = await fetch(`${API_BASE}/stories/${storyId}/ignore`, {
+  const response = await apiFetch(`${API_BASE}/stories/${storyId}/ignore`, {
     method: "POST",
     headers: makeHeaders(),
   });
@@ -144,7 +192,7 @@ export async function ignoreSuggestedStory(storyId: string): Promise<void> {
 }
 
 export async function resetIgnoredSuggestions(): Promise<{ restored: number }> {
-  const response = await fetch(`${API_BASE}/stories/reset-ignored`, {
+  const response = await apiFetch(`${API_BASE}/stories/reset-ignored`, {
     method: "POST",
     headers: makeHeaders(),
   });
@@ -152,7 +200,7 @@ export async function resetIgnoredSuggestions(): Promise<{ restored: number }> {
 }
 
 export async function publishStoryCard(storyId: string, cardTheme = "classic", cardSize = "square"): Promise<PublishedPost> {
-  const response = await fetch(`${API_BASE}/stories/${storyId}/publish`, {
+  const response = await apiFetch(`${API_BASE}/stories/${storyId}/publish`, {
     method: "POST",
     headers: makeHeaders({
       "Content-Type": "application/json",
@@ -163,7 +211,7 @@ export async function publishStoryCard(storyId: string, cardTheme = "classic", c
 }
 
 export async function unpublishStoryPost(postId: string): Promise<{ id: string; visibility: string; unpublished: boolean }> {
-  const response = await fetch(`${API_BASE}/posts/${postId}/unpublish`, {
+  const response = await apiFetch(`${API_BASE}/posts/${postId}/unpublish`, {
     method: "POST",
     headers: makeHeaders(),
   });
@@ -171,21 +219,21 @@ export async function unpublishStoryPost(postId: string): Promise<{ id: string; 
 }
 
 export async function getPublicProfile(username: string): Promise<PublicProfile> {
-  const response = await fetch(`${API_BASE}/profiles/${encodeURIComponent(username)}`, {
+  const response = await apiFetch(`${API_BASE}/profiles/${encodeURIComponent(username)}`, {
     headers: makeHeaders(),
   });
   return readJson(response, "Could not load public profile");
 }
 
 export async function getPublicPost(postId: string): Promise<PublishedPost> {
-  const response = await fetch(`${API_BASE}/posts/${encodeURIComponent(postId)}`, {
+  const response = await apiFetch(`${API_BASE}/posts/${encodeURIComponent(postId)}`, {
     headers: makeHeaders(),
   });
   return readJson(response, "Could not load public post");
 }
 
 export async function followProfile(username: string): Promise<{ following: boolean; followers_count: number }> {
-  const response = await fetch(`${API_BASE}/profiles/${encodeURIComponent(username)}/follow`, {
+  const response = await apiFetch(`${API_BASE}/profiles/${encodeURIComponent(username)}/follow`, {
     method: "POST",
     headers: makeHeaders(),
   });
@@ -193,7 +241,7 @@ export async function followProfile(username: string): Promise<{ following: bool
 }
 
 export async function unfollowProfile(username: string): Promise<{ following: boolean; followers_count: number }> {
-  const response = await fetch(`${API_BASE}/profiles/${encodeURIComponent(username)}/follow`, {
+  const response = await apiFetch(`${API_BASE}/profiles/${encodeURIComponent(username)}/follow`, {
     method: "DELETE",
     headers: makeHeaders(),
   });
@@ -201,14 +249,14 @@ export async function unfollowProfile(username: string): Promise<{ following: bo
 }
 
 export async function listFeed(): Promise<FeedResponse> {
-  const response = await fetch(`${API_BASE}/feed`, {
+  const response = await apiFetch(`${API_BASE}/feed`, {
     headers: makeHeaders(),
   });
   return readJson(response, "Could not load feed");
 }
 
 export async function addKudos(postId: string): Promise<SocialCounts> {
-  const response = await fetch(`${API_BASE}/posts/${encodeURIComponent(postId)}/kudos`, {
+  const response = await apiFetch(`${API_BASE}/posts/${encodeURIComponent(postId)}/kudos`, {
     method: "POST",
     headers: makeHeaders(),
   });
@@ -216,7 +264,7 @@ export async function addKudos(postId: string): Promise<SocialCounts> {
 }
 
 export async function removeKudos(postId: string): Promise<SocialCounts> {
-  const response = await fetch(`${API_BASE}/posts/${encodeURIComponent(postId)}/kudos`, {
+  const response = await apiFetch(`${API_BASE}/posts/${encodeURIComponent(postId)}/kudos`, {
     method: "DELETE",
     headers: makeHeaders(),
   });
@@ -224,12 +272,12 @@ export async function removeKudos(postId: string): Promise<SocialCounts> {
 }
 
 export async function listComments(postId: string): Promise<PostComment[]> {
-  const response = await fetch(`${API_BASE}/posts/${encodeURIComponent(postId)}/comments`);
+  const response = await apiFetch(`${API_BASE}/posts/${encodeURIComponent(postId)}/comments`);
   return readJson(response, "Could not load comments");
 }
 
 export async function addComment(postId: string, body: string): Promise<PostComment> {
-  const response = await fetch(`${API_BASE}/posts/${encodeURIComponent(postId)}/comments`, {
+  const response = await apiFetch(`${API_BASE}/posts/${encodeURIComponent(postId)}/comments`, {
     method: "POST",
     headers: makeHeaders({
       "Content-Type": "application/json",
@@ -240,29 +288,29 @@ export async function addComment(postId: string, body: string): Promise<PostComm
 }
 
 export async function getImportedGameShareCard(gameId: string): Promise<ShareCardData> {
-  const response = await fetch(`${API_BASE}/games/${gameId}/share-card`, {
+  const response = await apiFetch(`${API_BASE}/games/${gameId}/share-card`, {
     headers: makeHeaders(),
   });
   return readJson(response, "Could not open imported game");
 }
 
 export async function getJournalGameDetail(gameId: string): Promise<JournalGame> {
-  const response = await fetch(`${API_BASE}/games/${gameId}`, {
+  const response = await apiFetch(`${API_BASE}/games/${gameId}`, {
     headers: makeHeaders(),
   });
   return readJson(response, "Could not load game detail");
 }
 
 export async function reprocessJournalGame(gameId: string): Promise<JournalGame> {
-  const response = await fetch(`${API_BASE}/games/${gameId}/process`, {
+  const response = await apiFetch(`${API_BASE}/games/${gameId}/process`, {
     method: "POST",
     headers: makeHeaders(),
   });
   return readJson(response, "Could not reprocess game");
 }
 
-export async function analyzeJournalGame(gameId: string): Promise<JournalGame> {
-  const response = await fetch(`${API_BASE}/games/${gameId}/analyze`, {
+export async function analyzeJournalGame(gameId: string): Promise<{ queued: boolean; game_id: string; processing_status: string }> {
+  const response = await apiFetch(`${API_BASE}/games/${gameId}/analyze`, {
     method: "POST",
     headers: makeHeaders(),
   });
@@ -270,7 +318,7 @@ export async function analyzeJournalGame(gameId: string): Promise<JournalGame> {
 }
 
 export async function reprocessAllJournalGames(): Promise<{ processed: number }> {
-  const response = await fetch(`${API_BASE}/games/reprocess-all`, {
+  const response = await apiFetch(`${API_BASE}/games/reprocess-all`, {
     method: "POST",
     headers: makeHeaders(),
   });
@@ -278,21 +326,21 @@ export async function reprocessAllJournalGames(): Promise<{ processed: number }>
 }
 
 export async function getJournalGameDebug(gameId: string): Promise<GameDebug> {
-  const response = await fetch(`${API_BASE}/games/${gameId}/debug`, {
+  const response = await apiFetch(`${API_BASE}/games/${gameId}/debug`, {
     headers: makeHeaders(),
   });
   return readJson(response, "Could not load debug data");
 }
 
 export async function listSessions(): Promise<SessionSummary[]> {
-  const response = await fetch(`${API_BASE}/sessions`, {
+  const response = await apiFetch(`${API_BASE}/sessions`, {
     headers: makeHeaders(),
   });
   return readJson(response, "Could not load recent sessions");
 }
 
 export async function rebuildSessions(): Promise<{ sessions: number }> {
-  const response = await fetch(`${API_BASE}/sessions/rebuild`, {
+  const response = await apiFetch(`${API_BASE}/sessions/rebuild`, {
     method: "POST",
     headers: makeHeaders(),
   });
@@ -300,14 +348,14 @@ export async function rebuildSessions(): Promise<{ sessions: number }> {
 }
 
 export async function getSessionDetail(sessionId: string): Promise<SessionDetail> {
-  const response = await fetch(`${API_BASE}/sessions/${encodeURIComponent(sessionId)}`, {
+  const response = await apiFetch(`${API_BASE}/sessions/${encodeURIComponent(sessionId)}`, {
     headers: makeHeaders(),
   });
   return readJson(response, "Could not load session recap");
 }
 
 export async function getSessionShareCard(sessionId: string): Promise<SessionShareCardData> {
-  const response = await fetch(`${API_BASE}/sessions/${encodeURIComponent(sessionId)}/share-card`, {
+  const response = await apiFetch(`${API_BASE}/sessions/${encodeURIComponent(sessionId)}/share-card`, {
     headers: makeHeaders(),
   });
   return readJson(response, "Could not load session recap card");

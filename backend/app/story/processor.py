@@ -1,3 +1,4 @@
+from app.games.pgn_parser import find_move_squares
 from app.games.schemas import GameMetrics, ParsedGame
 from app.story.detectors import detect_story_candidates
 from app.story.schemas import GameStory
@@ -12,6 +13,7 @@ def generate_story(game: ParsedGame, metrics: GameMetrics | None = None) -> Game
     badge_label, badge_emoji, template_key = BADGES[primary.story_type]
     interesting_score = calculate_interesting_score(game, metrics, candidates)
     headline = _daily_activity_headline(game) if primary.story_type == "daily_activity" else _headline(primary.story_type, primary.confidence)
+    key_position_fen, key_move_number, key_move_san, key_move_from, key_move_to = _key_move_fields(primary.story_type, game, metrics)
 
     return GameStory(
         primary_story=primary.story_type,
@@ -20,9 +22,11 @@ def generate_story(game: ParsedGame, metrics: GameMetrics | None = None) -> Game
         badge_emoji=badge_emoji,
         headline=headline,
         subheadline=_subheadline(game, metrics),
-        key_move_number=_key_move_number(primary.story_type, metrics),
-        key_position_fen=_key_position_fen(primary.story_type, game, metrics),
-        key_move_san=_key_move_san(primary.story_type, metrics),
+        key_move_number=key_move_number,
+        key_position_fen=key_position_fen,
+        key_move_san=key_move_san,
+        key_move_from=key_move_from,
+        key_move_to=key_move_to,
         template_key=template_key,
         interesting_score=interesting_score,
         confidence_score=round(primary.confidence, 2),
@@ -68,6 +72,20 @@ def _subheadline(game: ParsedGame, metrics: GameMetrics | None) -> str | None:
     if game.opponent_username:
         parts.append(f"Against {game.opponent_username}.")
     return " ".join(parts) or None
+
+
+def _key_move_fields(story_type: str, game: ParsedGame, metrics: GameMetrics | None) -> tuple[str | None, int | None, str | None, str | None, str | None]:
+    key_position_fen = _key_position_fen(story_type, game, metrics)
+    move_number = _key_move_number(story_type, metrics)
+    san = _key_move_san(story_type, metrics)
+    squares = find_move_squares(game.pgn, move_number, san) if move_number and san else None
+    return (
+        key_position_fen,
+        move_number,
+        san,
+        squares[0] if squares else None,
+        squares[1] if squares else None,
+    )
 
 
 def _key_position_fen(story_type: str, game: ParsedGame, metrics: GameMetrics | None) -> str | None:

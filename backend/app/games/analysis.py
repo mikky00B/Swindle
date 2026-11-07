@@ -1,9 +1,10 @@
 from __future__ import annotations
 
+import time
 from dataclasses import dataclass
 from hashlib import sha256
 from io import StringIO
-from math import ceil
+from math import ceil, exp
 from typing import Any
 
 import chess
@@ -19,6 +20,8 @@ from app.models import EvalCache
 
 MAX_CLOUD_EVAL_POSITIONS = 40
 MATE_SCORE = 10.0
+UNAVAILABLE_CACHE_SOURCE = "unavailable"
+CLOUD_EVAL_429_RETRY_DELAY_SECONDS = 2.0
 
 
 @dataclass(frozen=True)
@@ -39,17 +42,26 @@ class EvalPoint:
 
 
 class CloudEvalUnavailable(Exception):
-    def __init__(self, message: str, *, cacheable: bool = False) -> None:
+    def __init__(self, message: str, *, cacheable: bool = False, rate_limited: bool = False) -> None:
         super().__init__(message)
         self.cacheable = cacheable
+        self.rate_limited = rate_limited
 
 
 def analyze_game_with_cloud_eval(game: ParsedGame, session: Session) -> GameMetrics:
     positions = replay_full_move_positions(game, limit=MAX_CLOUD_EVAL_POSITIONS)
     points: list[EvalPoint] = []
+    rate_limited = False
 
     for position in positions:
-        cached = get_or_fetch_cloud_eval(session, position.fen)
+        try:
+            cached = get_or_fetch_cloud_eval(session, position.fen)
+        except CloudEvalUnavailable as exc:
+            if exc.rate_limited:
+                # Stop hammering Lichess: keep what we have and mark partial.
+                rate_limited = True
+                break
+            continue
         if cached is None:
             continue
         white_eval = eval_payload_to_white_pawns(cached)
@@ -66,7 +78,10 @@ def analyze_game_with_cloud_eval(game: ParsedGame, session: Session) -> GameMetr
             )
         )
 
-    return metrics_from_eval_points(points, len(positions))
+    metrics = metrics_from_eval_points(points, len(positions))
+    if rate_limited:
+        metrics = metrics.model_copy(update={"analysis_status": "partial"})
+    return metrics
 
 
 def metrics_from_mock_user_evals(game: ParsedGame, eval_curve: list[Any], analysis_status: str = "complete") -> GameMetrics:
@@ -134,6 +149,9 @@ def get_or_fetch_cloud_eval(session: Session, fen: str) -> dict[str, Any] | None
     key = fen_key(fen)
     cached = session.scalar(select(EvalCache).where(EvalCache.fen_key == key))
     if cached is not None:
+        if cached.source == UNAVAILABLE_CACHE_SOURCE:
+            # Known-negative result: Lichess has no cloud eval for this position.
+            return None
         payload = _cache_to_eval_payload(cached)
         if payload is not None:
             return payload
@@ -143,7 +161,24 @@ def get_or_fetch_cloud_eval(session: Session, fen: str) -> dict[str, Any] | None
     try:
         payload = fetch_cloud_eval(fen)
     except CloudEvalUnavailable as exc:
-        return None
+        if exc.cacheable:
+            # Cache the negative result so re-analyses do not re-hit Lichess.
+            session.add(
+                EvalCache(
+                    fen_key=key,
+                    raw_fen=fen,
+                    eval_cp=None,
+                    mate=None,
+                    depth=None,
+                    source=UNAVAILABLE_CACHE_SOURCE,
+                )
+            )
+            session.flush()
+            return None
+        if not exc.rate_limited:
+            # Transient failures stay uncached and resolve to "no data".
+            return None
+        raise
 
     if payload is None:
         return None
@@ -170,13 +205,17 @@ def fetch_cloud_eval(fen: str) -> dict[str, Any] | None:
     try:
         with httpx.Client(timeout=8, trust_env=False) as client:
             response = client.get(lichess_api_url("/cloud-eval"), params={"fen": fen, "multiPv": "1"})
+            if response.status_code == 429:
+                # Back off once before giving up on this analysis run.
+                time.sleep(CLOUD_EVAL_429_RETRY_DELAY_SECONDS)
+                response = client.get(lichess_api_url("/cloud-eval"), params={"fen": fen, "multiPv": "1"})
     except httpx.HTTPError as exc:
         raise CloudEvalUnavailable("cloud eval request failed") from exc
 
     if response.status_code in {204, 404}:
         raise CloudEvalUnavailable("cloud eval unavailable", cacheable=True)
     if response.status_code == 429:
-        raise CloudEvalUnavailable("cloud eval rate limited")
+        raise CloudEvalUnavailable("cloud eval rate limited", rate_limited=True)
     try:
         response.raise_for_status()
     except httpx.HTTPStatusError as exc:
@@ -226,8 +265,10 @@ def metrics_from_eval_points(points: list[EvalPoint], attempted_positions: int) 
     highest = max(points, key=lambda point: point.user_eval)
     swing = _biggest_swing(points)
     status = "complete" if attempted_positions > 0 and len(points) == attempted_positions else "partial"
+    accuracy = estimate_accuracy_from_points(points)
 
     return GameMetrics(
+        accuracy=accuracy,
         lowest_eval=lowest.user_eval,
         highest_eval=highest.user_eval,
         biggest_eval_swing=swing["amount"],
@@ -250,6 +291,20 @@ def metrics_from_eval_points(points: list[EvalPoint], attempted_positions: int) 
         analysis_source="lichess_cloud_eval",
         analysis_status=status,
     )
+
+
+def estimate_accuracy_from_points(points: list[EvalPoint]) -> float | None:
+    """Rough accuracy estimate from sampled eval drops (centipawn-loss based).
+
+    The eval curve samples one position per full move, so this mixes both
+    players' contributions; treat it as a heuristic, not engine ground truth.
+    """
+    if len(points) < 2:
+        return None
+    losses_cp = [max(0.0, (previous.user_eval - current.user_eval) * 100) for previous, current in zip(points, points[1:])]
+    average_cp_loss = sum(losses_cp) / len(losses_cp)
+    estimated = 103.1668 * exp(-0.04354 * average_cp_loss) - 3.1669
+    return round(max(0.0, min(100.0, estimated)), 1)
 
 
 def fen_key(fen: str) -> str:

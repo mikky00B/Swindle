@@ -1,6 +1,6 @@
 BADGES = {
     "rating_milestone": ("Rating Milestone", "\U0001f4c8", "milestone_square_v1"),
-    "swindle": ("The Swindle", "SW", "swindle_square_v1"),
+    "swindle": ("The Swindle", "\U0001fa84", "swindle_square_v1"),
     "heartbreaker": ("Heartbreaker", "\U0001f494", "generic_square_v1"),
     "giant_slayer": ("Giant Slayer", "\u2694\ufe0f", "generic_square_v1"),
     "turning_point": ("Turning Point", "\U0001f500", "generic_square_v1"),

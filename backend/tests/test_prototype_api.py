@@ -70,7 +70,7 @@ def test_pgn_story_endpoint_uses_request_metrics_for_story_fields() -> None:
     assert response.status_code == 200
     body = response.json()
     assert body["story"]["primary_story"] == "swindle"
-    assert body["story"]["badge_emoji"] == "SW"
+    assert body["story"]["badge_emoji"] == "\U0001fa84"
     assert body["story"]["headline"] == "Completely lost, somehow walked out with the full point."
     assert body["story"]["key_move_number"] == 22
     assert body["story"]["key_position_fen"]

@@ -298,7 +298,6 @@ export type PublicProfile = {
   wins_shown: number;
   losses_shown: number;
   common_story?: string | null;
-  games_imported?: number;
   posts: PublishedPost[];
 };
 
