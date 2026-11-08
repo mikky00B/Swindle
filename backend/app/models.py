@@ -37,9 +37,13 @@ class OAuthState(Base):
 
     state: Mapped[str] = mapped_column(String(255), primary_key=True)
     code_verifier: Mapped[str] = mapped_column(String(255))
-    # "bind" states attach the Lichess account to an existing signed-in user;
+    # "bind" states attach the platform account to an existing signed-in user;
     # "login" states create or resolve the user at callback time.
     purpose: Mapped[str] = mapped_column(String(16), default="bind", server_default="bind")
+    platform: Mapped[str] = mapped_column(String(16), default="lichess", server_default="lichess")
+    # Chess.com has no identity endpoint, so its bind state carries the
+    # username the user is linking.
+    username: Mapped[str | None] = mapped_column(String(120), nullable=True)
     user_id: Mapped[str | None] = mapped_column(String(36), ForeignKey("users.id", ondelete="CASCADE"), nullable=True)
     expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)

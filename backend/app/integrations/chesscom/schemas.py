@@ -12,6 +12,7 @@ class ChessComStatus(BaseModel):
     platform_user_id: str | None = None
     last_synced_at: str | None = None
     connected_at: str | None = None
+    oauth_enabled: bool = False
 
 
 class ChessComLinkResponse(ChessComStatus):

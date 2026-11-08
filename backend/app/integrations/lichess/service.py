@@ -32,6 +32,7 @@ def create_connect_url(user_id: str = LOCAL_USER_ID) -> str:
                 state=state,
                 code_verifier=verifier,
                 purpose="bind",
+                platform="lichess",
                 user_id=user_id,
                 expires_at=oauth_state_expiry(),
             )
@@ -49,6 +50,7 @@ def create_lichess_login_url() -> str:
                 state=state,
                 code_verifier=verifier,
                 purpose="login",
+                platform="lichess",
                 user_id=None,
                 expires_at=oauth_state_expiry(),
             )
@@ -225,6 +227,8 @@ def _consume_state(state: str) -> dict[str, Any] | None:
             "state": record.state,
             "code_verifier": record.code_verifier,
             "purpose": record.purpose or "bind",
+            "platform": record.platform or "lichess",
+            "username": record.username,
             "user_id": record.user_id,
             "expires_at": record.expires_at,
         }

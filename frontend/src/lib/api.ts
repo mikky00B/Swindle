@@ -107,6 +107,11 @@ export function lichessConnectUrl(): string {
   return `${API_BASE}/integrations/lichess/connect`;
 }
 
+export function chesscomConnectUrl(username: string): string {
+  // Link + authorize the entered Chess.com username via OAuth (top-level redirect).
+  return `${API_BASE}/integrations/chesscom/connect?username=${encodeURIComponent(username)}`;
+}
+
 export function lichessLoginUrl(): string {
   // "Continue with Lichess": creates the account on first sign-in.
   return `${API_BASE}/auth/lichess/start`;

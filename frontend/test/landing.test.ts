@@ -31,12 +31,12 @@ assert.match(appSource, /window\.location\.assign\(lichessConnectUrl\(\)\)/);
 assert.match(appSource, /LANDING_DEMO_CARDS/);
 assert.match(appSource, /LANDING_THEMES/);
 assert.match(appSource, /setSelectedTheme\(theme\)/);
-assert.match(appSource, /1\. Connect Lichess/);
+assert.match(appSource, /1\. Connect your account/);
 assert.match(appSource, /2\. Find the story/);
 assert.match(appSource, /3\. Share the moment/);
 assert.match(appSource, /Private chess journal/);
 assert.match(appSource, /Multiple export sizes/);
-assert.match(appSource, /Start with your latest Lichess games\./);
+assert.match(appSource, /Start with your latest games\./);
 assert.match(appSource, /href="\/journal"/);
 assert.match(appSource, /<SwindleHeroDemo \/>/);
 

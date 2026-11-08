@@ -29,6 +29,14 @@ class Settings(BaseSettings):
     lichess_oauth_token_url: str = Field(default="https://lichess.org/api/token", alias="LICHESS_OAUTH_TOKEN_URL")
     lichess_api_base_url: str = Field(default="https://lichess.org", alias="LICHESS_API_BASE_URL")
     chesscom_api_base_url: str = Field(default="https://api.chess.com/pub", alias="CHESSCOM_API_BASE_URL")
+    chesscom_client_id: str = Field(default="", alias="CHESSCOM_CLIENT_ID")
+    chesscom_client_secret: str = Field(default="", alias="CHESSCOM_CLIENT_SECRET")
+    chesscom_redirect_uri: str = Field(
+        default="http://localhost:8000/api/v1/integrations/chesscom/callback",
+        alias="CHESSCOM_REDIRECT_URI",
+    )
+    chesscom_oauth_authorize_url: str = Field(default="https://www.chess.com/oauth/authorize", alias="CHESSCOM_OAUTH_AUTHORIZE_URL")
+    chesscom_oauth_token_url: str = Field(default="https://www.chess.com/oauth/token", alias="CHESSCOM_OAUTH_TOKEN_URL")
     token_encryption_key: str = Field(default="dev-only-token-key", alias="TOKEN_ENCRYPTION_KEY")
     database_url: str = Field(default="postgresql+psycopg://swindle:swindle@localhost:5432/swindle", alias="DATABASE_URL")
 

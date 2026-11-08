@@ -25,6 +25,7 @@ import {
   ignoreSuggestedStory,
   importLatestChessComGames,
   importLatestLichessGames,
+  chesscomConnectUrl,
   lichessConnectUrl,
   listComments,
   listFeed,
@@ -246,7 +247,7 @@ export function App() {
   }
 
   async function handleImport() {
-    setStatus("Importing latest Lichess games...");
+    setStatus("Importing latest games...");
     try {
       const result = await importLatestLichessGames();
       const [games, suggestions, nextSessions] = await loadJournalLists();
@@ -807,59 +808,79 @@ function JournalControls({
         <h1>Private chess journal</h1>
       </div>
 
-      <div className="account-box">
-        <span>Lichess</span>
-        <strong>{lichessStatus?.connected ? lichessStatus.platform_username : "Not connected"}</strong>
-      </div>
-      {import.meta.env.DEV ? (
-        <p className="dev-notice">Dev mode: using default local user. Public profile uses connected Lichess username.</p>
-      ) : null}
+      {import.meta.env.DEV ? <p className="dev-notice">Dev mode: using the default local user.</p> : null}
 
-      <div className="actions">
-        {lichessStatus?.connected ? (
-          <>
-            <button type="button" onClick={onImport}>
-              Import latest
-            </button>
-            <button type="button" className="secondary" onClick={onDisconnect}>
-              Disconnect
-            </button>
-          </>
-        ) : (
-          <button type="button" onClick={() => window.location.assign(lichessConnectUrl())}>
-            Connect Lichess
-          </button>
-        )}
-        <button type="button" className="secondary" onClick={onRefresh}>
-          Refresh
-        </button>
-      </div>
-
-      <form className="account-box chesscom-box" onSubmit={onAddChessComUsername}>
-        <span>Chess.com</span>
-        <strong>{chesscomStatus?.connected ? chesscomStatus.platform_username : "No username added"}</strong>
-        <p>Chess.com imports use public game archives. No password required.</p>
-        <label>
-          Chess.com username
-          <input
-            value={chesscomUsername}
-            onChange={(event) => onChessComUsernameChange(event.target.value)}
-            placeholder="Chess.com username"
-          />
-        </label>
-        {chesscomStatus?.last_synced_at ? <small>Last imported {formatDate(chesscomStatus.last_synced_at)}</small> : null}
-        <div className="actions">
-          <button type="submit">Add Chess.com username</button>
-          <button type="button" className="secondary" onClick={onImportChessComGames} disabled={!chesscomStatus?.connected}>
-            Import Chess.com games
-          </button>
-          {chesscomStatus?.connected ? (
-            <button type="button" className="ghost" onClick={onDisconnectChessCom}>
-              Remove
-            </button>
-          ) : null}
+      <div className="connect-panel">
+        <div className="panel-heading connect-heading">
+          <p>Chess accounts</p>
+          <h2>Connect your chess</h2>
+          <p className="connect-hint">Connect one now — you can add the other anytime.</p>
         </div>
-      </form>
+
+        <div className="platform-card">
+          <div className="account-box">
+            <span>Lichess</span>
+            <strong>{lichessStatus?.connected ? lichessStatus.platform_username : "Not connected"}</strong>
+          </div>
+          <div className="actions">
+            {lichessStatus?.connected ? (
+              <>
+                <button type="button" onClick={onImport}>
+                  Import latest
+                </button>
+                <button type="button" className="secondary" onClick={onDisconnect}>
+                  Disconnect
+                </button>
+              </>
+            ) : (
+              <button type="button" onClick={() => window.location.assign(lichessConnectUrl())}>
+                Connect Lichess
+              </button>
+            )}
+            <button type="button" className="secondary" onClick={onRefresh}>
+              Refresh
+            </button>
+          </div>
+        </div>
+
+        <form className="platform-card" onSubmit={onAddChessComUsername}>
+          <div className="account-box chesscom-box">
+            <span>Chess.com</span>
+            <strong>{chesscomStatus?.connected ? chesscomStatus.platform_username : "No username added"}</strong>
+          </div>
+          <p className="platform-note">Chess.com imports use public game archives. No password required.</p>
+          <label>
+            Chess.com username
+            <input
+              value={chesscomUsername}
+              onChange={(event) => onChessComUsernameChange(event.target.value)}
+              placeholder="Chess.com username"
+            />
+          </label>
+          {chesscomStatus?.last_synced_at ? <small>Last imported {formatDate(chesscomStatus.last_synced_at)}</small> : null}
+          <div className="actions">
+            {chesscomStatus?.oauth_enabled && !chesscomStatus?.connected ? (
+              <button
+                type="button"
+                disabled={!chesscomUsername.trim()}
+                title={chesscomUsername.trim() ? "" : "Enter your Chess.com username first"}
+                onClick={() => window.location.assign(chesscomConnectUrl(chesscomUsername.trim()))}
+              >
+                Link with Chess.com
+              </button>
+            ) : null}
+            <button type="submit">Add Chess.com username</button>
+            <button type="button" className="secondary" onClick={onImportChessComGames} disabled={!chesscomStatus?.connected}>
+              Import Chess.com games
+            </button>
+            {chesscomStatus?.connected ? (
+              <button type="button" className="ghost" onClick={onDisconnectChessCom}>
+                Remove
+              </button>
+            ) : null}
+          </div>
+        </form>
+      </div>
 
       <MobileJournalPreview
         selectedGame={selectedGame}
@@ -992,7 +1013,7 @@ function JournalControls({
 
       <div className="journal-list">
         {journal.length === 0 ? (
-          <p className="empty-state">No games imported yet. Connect Lichess and import your latest games.</p>
+          <p className="empty-state">No games imported yet. Connect a Lichess or Chess.com account above and import your latest games.</p>
         ) : filteredJournal.length === 0 ? (
           <p className="empty-state">No games match this journal filter.</p>
         ) : (
@@ -1910,20 +1931,25 @@ function LandingPage() {
   const [selectedTheme, setSelectedTheme] = useState<ShareCardTheme>("classic");
   const [selectedDemo, setSelectedDemo] = useState(0);
   const [lichessStatus, setLichessStatus] = useState<LichessStatus | null>(null);
+  const [chesscomStatus, setChesscomStatus] = useState<ChessComStatus | null>(null);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const selectedCard = LANDING_DEMO_CARDS[selectedDemo]?.card ?? LANDING_DEMO_CARDS[0].card;
-  const connected = Boolean(lichessStatus?.connected);
+  const connected = Boolean(lichessStatus?.connected || chesscomStatus?.connected);
 
   useEffect(() => {
     void getLichessStatus()
       .then(setLichessStatus)
       .catch(() => setLichessStatus(null));
+    void getChessComStatus()
+      .then(setChesscomStatus)
+      .catch(() => setChesscomStatus(null));
   }, []);
 
   return (
     <main className="landing-page">
       <nav className="landing-nav">
         <a className="landing-logo" href="/">
+          <span className="landing-logo-mark" aria-hidden="true"><svg viewBox="0 0 200 200" width="26" height="26" aria-hidden="true"><rect width="200" height="200" rx="44" fill="#f6f3ec"/><path d="M 0 200 L 200 0 L 200 200 Z" fill="#dce14e"/><path d="M 60 158 L 150 158 L 150 147 C 150 137 143 130 134 127 C 143 119 148 108 147 98 C 146 88 140 78 132 72 L 126 54 L 118 70 L 100 58 L 102 76 C 92 80 82 88 72 100 L 60 114 C 56 119 56 125 60 129 L 76 139 C 66 144 62 150 60 158 Z" fill="#17201b"/><path d="M 60 158 L 150 158 L 150 147 C 150 137 143 130 134 127 L 60 158 Z" fill="#526159"/><circle cx="120" cy="86" r="4.6" fill="#f6f3ec"/></svg></span>
           Swindle
         </a>
         <button
@@ -1947,9 +1973,9 @@ function LandingPage() {
           ) : (
             <a href="/login">Log in</a>
           )}
-          <button type="button" onClick={connectLichess}>
-            Connect Lichess
-          </button>
+          <a className="landing-nav-cta" href="/login">
+            Get started
+          </a>
         </div>
       </nav>
 
@@ -1967,9 +1993,9 @@ function LandingPage() {
                 Open Journal
               </a>
             ) : (
-              <button type="button" className="landing-primary" onClick={connectLichess}>
-                Connect Lichess
-              </button>
+              <a className="button-link landing-primary" href="/login">
+                Get started
+              </a>
             )}
             <a className="button-link secondary-link" href="#example-cards">
               View example cards
@@ -2027,7 +2053,7 @@ function LandingPage() {
           <h2>From recent games to shareable moments</h2>
         </div>
         <div className="landing-steps">
-          <LandingInfoCard title="1. Connect Lichess" body="Securely connect your Lichess account and import your recent games." />
+          <LandingInfoCard title="1. Connect your account" body="Securely connect Lichess or Chess.com and import your recent games." />
           <LandingInfoCard
             title="2. Find the story"
             body="Swindle finds giant slayers, long grinds, miniatures, swindles, heartbreakers, and turning points."
@@ -2059,11 +2085,11 @@ function LandingPage() {
       </section>
 
       <section className="landing-final-cta">
-        <h2>Start with your latest Lichess games.</h2>
-        <button type="button" onClick={connectLichess}>
-          Connect Lichess
-        </button>
-        <p>Free to try. Lichess only for now.</p>
+        <h2>Start with your latest games.</h2>
+        <a className="button-link landing-primary" href="/login">
+          Get started
+        </a>
+        <p>Free to try. Works with Lichess and Chess.com.</p>
       </section>
     </main>
   );
@@ -2076,10 +2102,6 @@ function LandingInfoCard({ title, body }: { title: string; body: string }) {
       <p>{body}</p>
     </article>
   );
-}
-
-function connectLichess() {
-  window.location.assign(lichessConnectUrl());
 }
 
 function PublicCardActions({

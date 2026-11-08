@@ -3672,3 +3672,66 @@ button.filter-tab.is-active {
   border-radius: 14px;
   overflow: hidden;
 }
+
+/* Brand mark next to wordmarks */
+.landing-logo {
+  display: inline-flex;
+  align-items: center;
+  gap: 9px;
+}
+
+.landing-logo-mark,
+.login-logo-mark {
+  display: inline-flex;
+  flex: none;
+}
+
+.landing-logo-mark svg,
+.login-logo-mark svg {
+  display: block;
+  border-radius: 7px;
+}
+
+/* Connect panel: two equal platform cards */
+.connect-panel {
+  display: grid;
+  gap: 12px;
+}
+
+.connect-heading {
+  margin-bottom: 2px;
+}
+
+.connect-heading .connect-hint {
+  margin: 2px 0 0;
+  color: #526159;
+  font-size: 12.5px;
+  font-weight: 600;
+}
+
+.platform-card {
+  display: grid;
+  gap: 10px;
+  padding: 14px;
+  background: #ffffff;
+  border: 1px solid #e3ddd0;
+  border-radius: 10px;
+}
+
+.platform-note {
+  margin: 0;
+  color: #526159;
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.landing-nav-cta {
+  display: inline-flex;
+  align-items: center;
+  padding: 9px 16px;
+  border-radius: 8px;
+  background: #17201b;
+  color: #ffffff;
+  font-weight: 800;
+  text-decoration: none;
+}

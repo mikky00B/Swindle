@@ -9,6 +9,7 @@ The product is not a chess playing site and is not a Lichess/chess.com competito
 - Account sign-up and sign-in with HttpOnly session cookies (register, login, logout, me). Login and register attempts are rate limited.
 - Lichess OAuth connection with PKCE-style state handling and encrypted token storage.
 - Chess.com public username linking for archive-based game import.
+- Chess.com OAuth account linking, ready to activate once the registered Chess.com app is approved and its credentials are set.
 - Recent game import from Lichess and Chess.com.
 - Duplicate-safe game persistence by user, platform, and external game id.
 - PGN parsing, final-position extraction, result detection, opening metadata, ratings, moves, and platform payload storage.
@@ -205,6 +206,8 @@ Important variables:
 - `LICHESS_SCOPES`: requested Lichess scopes.
 - `LICHESS_API_BASE_URL`: Lichess API base URL.
 - `CHESSCOM_API_BASE_URL`: Chess.com public API base URL.
+- `CHESSCOM_CLIENT_ID` / `CHESSCOM_CLIENT_SECRET`: Chess.com OAuth app credentials. When both are set, Chess.com account linking via OAuth is offered in the journal.
+- `CHESSCOM_REDIRECT_URI`: Chess.com OAuth callback URL (registered as `https://swindle.clevermike.studio/api/v1/integrations/chesscom/callback` in production).
 - `TOKEN_ENCRYPTION_KEY`: Fernet key for Lichess OAuth token encryption.
 - `VITE_API_BASE`: frontend API base URL.
 
@@ -290,6 +293,8 @@ GET  /api/v1/integrations/lichess/callback
 GET  /api/v1/integrations/lichess/status
 POST /api/v1/integrations/lichess/disconnect
 
+GET  /api/v1/integrations/chesscom/connect
+GET  /api/v1/integrations/chesscom/callback
 POST /api/v1/integrations/chesscom/link
 GET  /api/v1/integrations/chesscom/status
 POST /api/v1/integrations/chesscom/disconnect

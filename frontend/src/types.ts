@@ -62,6 +62,7 @@ export type LichessStatus = {
 
 export type ChessComStatus = {
   connected: boolean;
+  oauth_enabled?: boolean;
   platform: "chesscom";
   platform_username?: string | null;
   platform_user_id?: string | null;
