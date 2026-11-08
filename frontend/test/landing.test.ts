@@ -38,7 +38,7 @@ assert.match(appSource, /Private chess journal/);
 assert.match(appSource, /Multiple export sizes/);
 assert.match(appSource, /Start with your latest Lichess games\./);
 assert.match(appSource, /href="\/journal"/);
-assert.match(appSource, /<ResponsiveShareCard card=\{selectedCard\} theme=\{selectedTheme\} size="square" \/>/);
+assert.match(appSource, /<SwindleHeroDemo \/>/);
 
 assert.match(cssSource, /\.landing-page/);
 assert.match(cssSource, /\.landing-hero/);

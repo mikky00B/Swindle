@@ -2,6 +2,7 @@ import { useEffect, useRef, useState, type CSSProperties, type FormEvent, type R
 import { LoginPage } from "./components/auth/LoginPage";
 import { ShareCard } from "./components/cards/ShareCard";
 import { ChessBoard } from "./components/chess/ChessBoard";
+import { SwindleHeroDemo } from "./components/landing/SwindleHeroDemo";
 import { LANDING_DEMO_CARDS } from "./data/demoCards";
 import {
   addComment,
@@ -1975,8 +1976,8 @@ function LandingPage() {
             </a>
           </div>
         </div>
-        <div className="landing-hero-card" aria-label="Featured story card example">
-          <ResponsiveShareCard card={selectedCard} theme={selectedTheme} size="square" />
+        <div className="landing-hero-card landing-hero-demo" aria-label="Swindle product demo">
+          <SwindleHeroDemo />
         </div>
       </section>
 

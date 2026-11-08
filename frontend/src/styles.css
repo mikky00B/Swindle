@@ -3663,3 +3663,12 @@ button.filter-tab.is-active {
     border-radius: 8px;
   }
 }
+
+/* Landing hero: the animated product demo fills its slot edge to edge. */
+.landing-hero-card.landing-hero-demo {
+  border: 0;
+  background: transparent;
+  box-shadow: none;
+  border-radius: 14px;
+  overflow: hidden;
+}

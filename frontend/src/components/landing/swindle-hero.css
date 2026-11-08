@@ -1,0 +1,322 @@
+/* All rules belong to this example, including its responsive variants. */
+.sw {
+  font-family: Inter, ui-sans-serif, system-ui, -apple-system, 'Segoe UI', sans-serif;
+
+  /* Corner bleed on Swindle's cream ground: the journal window sits one
+     gutter in from the top and runs off the right and bottom edges; the
+     share card straddles the window's left edge, half on the ground. */
+  & .ss-stage {
+    --gutter: 26px;
+    overflow: hidden;
+    border-radius: 14px;
+    background: #efe9dc;
+  }
+
+  .sw-window {
+    position: absolute;
+    top: var(--gutter);
+    left: 80px;
+    width: 470px;
+    height: 480px;
+  }
+
+
+  .sw-app {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    height: 100%;
+    padding: 14px;
+  }
+
+  .sw-header {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+  }
+
+  .sw-title {
+    margin-right: 6px;
+    font-size: 12px;
+    font-weight: 650;
+    color: var(--ss-text-strong);
+  }
+
+  .sw-rows {
+    flex: 1;
+    min-height: 0;
+    max-width: 382px;
+    overflow: hidden;
+    padding: 4px;
+    background: var(--ss-surface);
+    border-radius: 10px;
+    box-shadow: var(--ss-shadow-card);
+  }
+
+  .sw-row {
+    --ss-row-pad-x: 12px;
+  }
+
+  /* The story row and its reveal */
+  .sw-reveal {
+    display: grid;
+    justify-items: start;
+    gap: 8px;
+    padding: 2px 12px 12px 44px;
+    transition: opacity 0.2s ease;
+  }
+
+  /* The card takes over as the story's carrier; say it once. */
+  .sw-app[data-card='true'] .sw-reveal {
+    opacity: 0;
+  }
+
+  .sw-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    padding: 4px 10px;
+    border-radius: 999px;
+    background: #17201b;
+    color: #f6f3ec;
+    font-size: 10.5px;
+    font-weight: 750;
+    line-height: 14px;
+    letter-spacing: 0.01em;
+  }
+
+  .sw-headline {
+    margin: 0;
+    color: var(--ss-text-strong);
+    font-size: 11.5px;
+    font-weight: 600;
+    line-height: 15px;
+  }
+
+  /* ---- The share card, the payoff ---- */
+
+  .sw-card {
+    position: absolute;
+    left: 24px;
+    top: 132px;
+    z-index: 60;
+    display: grid;
+    justify-items: start;
+    gap: 9px;
+    width: 208px;
+    padding: 14px;
+    border-radius: 12px;
+    background: #fbf9f1;
+    box-shadow: var(--ss-shadow-satellite);
+    opacity: 0;
+    transform: translateY(10px) scale(0.97);
+    will-change: transform, opacity;
+    transition: opacity 0.25s ease, transform 0.25s cubic-bezier(0.22, 1, 0.36, 1);
+  }
+
+  .sw-card[data-show='true'] {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+
+  .sw-card-brand {
+    display: flex;
+    align-items: baseline;
+    gap: 5px;
+    color: #17201b;
+    font-size: 10.5px;
+    font-weight: 750;
+  }
+
+  .sw-card-mark {
+    font-size: 13px;
+    line-height: 1;
+  }
+
+  .sw-card-brand strong {
+    margin-left: auto;
+    color: #526159;
+    font-size: 10px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+  }
+
+  .sw-badge--card {
+    background: #17201b;
+  }
+
+  .sw-card-headline {
+    margin: 0;
+    color: #17201b;
+    font-size: 12px;
+    font-weight: 650;
+    line-height: 1.35;
+  }
+
+  /* The key position, drawn from the story's FEN */
+  .sw-board {
+    display: grid;
+    grid-template-columns: repeat(8, 13px);
+    grid-template-rows: repeat(8, 13px);
+    overflow: hidden;
+    border-radius: 6px;
+    box-shadow: inset 0 0 0 1px rgb(23 32 27 / 18%);
+  }
+
+  .sw-square {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: #ece8da;
+  }
+
+  .sw-square.is-dark {
+    background: #6f7d66;
+  }
+
+  .sw-square.is-highlight {
+    background: #ddd65e;
+  }
+
+  .sw-square.is-dark.is-highlight {
+    background: #c9c94e;
+  }
+
+  .sw-piece {
+    font-size: 10px;
+    line-height: 1;
+  }
+
+  .sw-piece.is-white {
+    color: #fdfcf7;
+    text-shadow: 0 0 1.5px rgb(23 32 27 / 90%);
+  }
+
+  .sw-piece.is-black {
+    color: #17201b;
+  }
+
+  .sw-card-meta {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    width: 100%;
+    color: #526159;
+    font-size: 10.5px;
+    font-weight: 650;
+  }
+
+  .sw-card-meta strong {
+    color: #17201b;
+    font-size: 12px;
+    font-weight: 800;
+  }
+
+  /* ---- Compact: a second design for the phone column ----
+     The journal is a strip at the top; the share card is the hero,
+     pinned past the bottom edge like a feature card. */
+  & .ss-stage[data-layout='compact'] {
+    --gutter: 16px;
+  }
+
+  & .ss-stage[data-layout='compact'] .sw-window {
+    left: 16px;
+    top: 16px;
+    width: 420px;
+    height: 260px;
+  }
+
+  & .ss-stage[data-layout='compact'] .sw-app {
+    padding: 12px 14px;
+  }
+
+  /* The card carries the beat; the row's reveal stays out of its way. */
+  & .ss-stage[data-layout='compact'] .sw-reveal {
+    display: none;
+  }
+
+  & .ss-stage[data-layout='compact'] .sw-row-filler {
+    display: none;
+  }
+
+  & .ss-stage[data-layout='compact'] .sw-row-lead {
+    display: none;
+  }
+
+  & .ss-stage[data-layout='compact'] .sw-story {
+    position: relative;
+  }
+
+  & .ss-stage[data-layout='compact'] .sw-mini-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 3px;
+    margin-left: 7px;
+    padding: 3px 8px;
+    border-radius: 999px;
+    background: #17201b;
+    color: #f6f3ec;
+    font-size: 11px;
+    font-weight: 750;
+    line-height: 14px;
+    vertical-align: 1px;
+    opacity: 0;
+    transform: scale(0.7);
+    will-change: transform, opacity;
+    transition: opacity 0.22s ease, transform 0.25s cubic-bezier(0.22, 1, 0.36, 1);
+  }
+
+  & .ss-stage[data-layout='compact'] .sw-mini-badge.is-on {
+    opacity: 1;
+    transform: scale(1);
+  }
+
+  & .ss-stage[data-layout='compact'] .sw-card {
+    left: 16px;
+    width: 316px;
+    top: 180px;
+    grid-template-columns: minmax(0, 1fr) 128px;
+    align-items: start;
+    column-gap: 12px;
+  }
+
+  & .ss-stage[data-layout='compact'] .sw-board {
+    grid-column: 2;
+    grid-row: 2 / 4;
+    margin-top: 2px;
+  }
+
+  & .ss-stage[data-layout='compact'] .sw-card-meta {
+    grid-column: 1;
+    align-self: end;
+  }
+
+  & .ss-stage[data-layout='compact'] .sw-mini-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 3px;
+    margin-left: 7px;
+    padding: 3px 8px;
+    border-radius: 999px;
+    background: #17201b;
+    color: #f6f3ec;
+    font-size: 11px;
+    font-weight: 750;
+    line-height: 14px;
+    vertical-align: 1px;
+    opacity: 0;
+    transform: scale(0.7);
+    will-change: transform, opacity;
+    transition: opacity 0.22s ease, transform 0.25s cubic-bezier(0.22, 1, 0.36, 1);
+  }
+
+  & .ss-stage[data-layout='compact'] .sw-mini-badge.is-on {
+    opacity: 1;
+    transform: scale(1);
+  }
+
+  & .ss-stage[data-layout='compact'] .sw-piece {
+    font-size: 12px;
+  }
+}
